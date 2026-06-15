@@ -415,6 +415,14 @@ button {
   gap: 10px;
 }
 
+.roster-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .formation-form {
   width: 100%;
 }
@@ -1321,6 +1329,7 @@ tr:last-child td {
   }
 
   .toolbar-actions,
+  .roster-actions,
   .player-form {
     display: grid;
     grid-template-columns: 1fr;

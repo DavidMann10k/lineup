@@ -259,6 +259,34 @@ function resetClock() {
   render();
 }
 
+function resetPlayedTime() {
+  if (
+    !window.confirm(
+      "Reset all player playtime and the game clock for a new game? Your roster and lineup assignments will stay intact.",
+    )
+  ) {
+    return;
+  }
+
+  state.clock.running = false;
+  state.clock.elapsedSeconds = 0;
+  state.clock.period = 1;
+  state.clock.lastTickAt = null;
+  state.openStints = {};
+  state.events = [];
+
+  for (const player of state.players) {
+    player.totalSeconds = 0;
+    player.benchSeconds = 0;
+    player.positionSeconds = {};
+    player.history = [];
+  }
+
+  openLiveStints();
+  saveState();
+  render();
+}
+
 function applyFormation(value) {
   const result = normalizeFormation(value);
   if (result.error) {
@@ -703,6 +731,12 @@ function renderRoster() {
           </div>
           <button class="button green" type="submit">Add</button>
         </form>
+        <div class="roster-actions">
+          <button class="button secondary" type="button" data-action="reset-played-time">
+            ${renderIcon("refresh")}
+            <span>Reset time</span>
+          </button>
+        </div>
       </div>
 
       <div class="stat-grid" aria-label="Roster totals">
@@ -1294,6 +1328,7 @@ document.addEventListener("click", (event) => {
   if (action === "toggle-clock") toggleClock();
   if (action === "next-period") nextPeriod();
   if (action === "reset-clock") resetClock();
+  if (action === "reset-played-time") resetPlayedTime();
   if (action === "snapshot") commitSnapshot();
   if (action === "reset-staged") resetStagedLineup();
   if (action === "remove-player") removePlayer(target.dataset.playerId);
