@@ -185,6 +185,8 @@ function labelsForLine(prefix, count) {
 
 function ensureAssignmentKeys() {
   const validIds = new Set(getSlots().map((slot) => slot.id));
+  const livePlayerIds = new Set();
+  const stagedPlayerIds = new Set();
 
   for (const key of Object.keys(state.liveAssignments)) {
     if (!validIds.has(key)) delete state.liveAssignments[key];
@@ -195,10 +197,48 @@ function ensureAssignmentKeys() {
   }
 
   for (const slotId of validIds) {
+    const livePlayerId = state.liveAssignments[slotId];
+    if (livePlayerId && (!getPlayer(livePlayerId) || livePlayerIds.has(livePlayerId))) {
+      state.liveAssignments[slotId] = null;
+    } else if (livePlayerId) {
+      livePlayerIds.add(livePlayerId);
+    }
+
     if (!Object.prototype.hasOwnProperty.call(state.stagedAssignments, slotId)) {
       state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
     }
+
+    const stagedPlayerId = state.stagedAssignments[slotId];
+    if (stagedPlayerId && (!getPlayer(stagedPlayerId) || stagedPlayerIds.has(stagedPlayerId))) {
+      state.stagedAssignments[slotId] = null;
+    } else if (stagedPlayerId) {
+      stagedPlayerIds.add(stagedPlayerId);
+    }
   }
+}
+
+function remapAssignmentsByPosition(previousSlots, nextSlots, assignments) {
+  const assignmentsByLabel = new Map();
+
+  for (const slot of previousSlots) {
+    const playerId = assignments[slot.id];
+    if (playerId && getPlayer(playerId)) assignmentsByLabel.set(slot.label, playerId);
+  }
+
+  const nextAssignments = {};
+  const usedPlayerIds = new Set();
+
+  for (const slot of nextSlots) {
+    const playerId = assignmentsByLabel.get(slot.label) || null;
+    if (playerId && !usedPlayerIds.has(playerId)) {
+      nextAssignments[slot.id] = playerId;
+      usedPlayerIds.add(playerId);
+    } else {
+      nextAssignments[slot.id] = null;
+    }
+  }
+
+  return nextAssignments;
 }
 
 function accrueTime() {
@@ -312,11 +352,27 @@ function applyFormation(value) {
     return;
   }
 
+  const previousSlots = getSlots();
+  const previousLiveAssignments = { ...state.liveAssignments };
+  const previousStagedAssignments = { ...state.stagedAssignments };
+
   accrueTime();
   closeLiveStints();
 
   state.formation = result.value;
   state.formationError = "";
+  const nextSlots = getSlots();
+  state.liveAssignments = remapAssignmentsByPosition(
+    previousSlots,
+    nextSlots,
+    previousLiveAssignments,
+  );
+  state.stagedAssignments = remapAssignmentsByPosition(
+    previousSlots,
+    nextSlots,
+    previousStagedAssignments,
+  );
+  state.openStints = {};
   ensureAssignmentKeys();
   openLiveStints();
 
@@ -531,12 +587,16 @@ function playerName(playerId) {
   return player ? player.name : "Open";
 }
 
+function getVisibleAssignmentPlayerIds(assignments) {
+  return new Set(getSlots().map((slot) => assignments[slot.id]).filter(Boolean));
+}
+
 function getLivePlayerIds() {
-  return new Set(Object.values(state.liveAssignments).filter(Boolean));
+  return getVisibleAssignmentPlayerIds(state.liveAssignments);
 }
 
 function getStagedPlayerIds() {
-  return new Set(Object.values(state.stagedAssignments).filter(Boolean));
+  return getVisibleAssignmentPlayerIds(state.stagedAssignments);
 }
 
 function getBenchPlayers() {
@@ -572,6 +632,17 @@ function getChangedSlots() {
   return getSlots().filter((slot) => {
     return (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
   });
+}
+
+function getPendingSubs() {
+  return getSlots()
+    .map((slot) => {
+      const outgoing = getPlayer(state.liveAssignments[slot.id]);
+      const incoming = getPlayer(state.stagedAssignments[slot.id]);
+      if (!incoming || !outgoing || incoming.id === outgoing.id) return null;
+      return { slot, incoming, outgoing };
+    })
+    .filter(Boolean);
 }
 
 function formatDuration(seconds) {
@@ -693,6 +764,8 @@ function renderIcon(name) {
       '<path d="M18.8 8.2A7.2 7.2 0 1 0 19 15" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round"></path><path d="M19 4.8v4.1h-4.1" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"></path>',
     swapVertical:
       '<path d="M8 4v14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M4.5 14.5 8 18l3.5-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M16 20V6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M12.5 9.5 16 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>',
+    swapHorizontal:
+      '<path d="M4 8h13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="m14 5 3 3-3 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M20 16H7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="m10 13-3 3 3 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>',
     cancel:
       '<path d="m7 7 10 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path><path d="m17 7-10 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path>',
     check:
@@ -955,24 +1028,51 @@ function renderFormation() {
           <section class="field-zone">
             ${renderPitch()}
           </section>
+          ${renderSubsPanel()}
           ${renderBench(changedSlots.length)}
           ${renderFormationEditor()}
         </div>
 
         <aside class="lineup-panel">
-          <div>
-            <div class="panel-head">
-              <h2>Lineup</h2>
-              <span class="selected-pill">${changedSlots.length} pending</span>
-            </div>
-            <div class="slot-list">
-              ${getSlots().map(renderSlotRow).join("")}
-            </div>
-          </div>
           ${renderEventLog()}
         </aside>
       </div>
     </section>
+  `;
+}
+
+function renderSubsPanel() {
+  const subs = getPendingSubs();
+  if (!subs.length) return "";
+
+  return `
+    <section class="subs-panel" aria-label="Pending substitutions">
+      <div class="subs-head">
+        <h2>Subs</h2>
+        <span class="selected-pill">${subs.length} pending</span>
+      </div>
+      <div class="subs-list">
+        ${subs.map(renderSubRow).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderSubRow(sub) {
+  return `
+    <div class="sub-row">
+      <div class="sub-person in">
+        <span>In</span>
+        <strong>${escapeHtml(sub.incoming.name)}</strong>
+      </div>
+      <div class="sub-swap" aria-hidden="true">
+        ${renderIcon("swapHorizontal")}
+      </div>
+      <div class="sub-person out">
+        <span>Out</span>
+        <strong>${escapeHtml(sub.outgoing.name)}</strong>
+      </div>
+    </div>
   `;
 }
 

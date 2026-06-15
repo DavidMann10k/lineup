@@ -504,6 +504,7 @@ button:focus-visible {
 .lineup-panel,
 .roster-table-wrap,
 .stat-grid,
+.subs-panel,
 .bench-strip,
 .event-log {
   border: 1px solid var(--line);
@@ -717,7 +718,15 @@ button:focus-visible {
   padding: 12px;
 }
 
+.subs-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
 .bench-head,
+.subs-head,
 .panel-head,
 .event-head {
   display: flex;
@@ -725,6 +734,10 @@ button:focus-visible {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.subs-head {
+  margin-bottom: 0;
 }
 
 .bench-actions {
@@ -746,10 +759,67 @@ button:focus-visible {
 }
 
 .bench-head h2,
+.subs-head h2,
 .panel-head h2,
 .event-head h2 {
   margin: 0;
   font-size: 0.95rem;
+}
+
+.subs-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sub-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(217, 154, 33, 0.58);
+  border-radius: 8px;
+  background: #fff9ec;
+}
+
+.sub-person {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.sub-person.out {
+  text-align: right;
+}
+
+.sub-person span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sub-person strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub-swap {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  justify-self: center;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.sub-swap .icon {
+  width: 20px;
+  height: 20px;
 }
 
 .selected-pill {

@@ -9,6 +9,7 @@ The app is static HTML, CSS, and JavaScript. There is no backend. Player and mat
 - Roster screen for player names, active status, playtime, position history, sorting, and new-game time resets.
 - Formation screen with soccer notation such as `2-3-1` or `4-3-3`.
 - Drag-and-drop player chips for assigning players to field positions.
+- Pending substitutions panel showing players going in and coming out.
 - Staged substitutions with a set-lineup action that records live stints.
 - Match clock with play/pause, period advance, and reset controls.
 - PWA manifest, install icons, and service worker for mobile installation.
