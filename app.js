@@ -235,6 +235,9 @@ function toggleClock() {
     state.clock.running = false;
     state.clock.lastTickAt = null;
   } else {
+    if (Number(state.clock.elapsedSeconds || 0) === 0) {
+      commitSnapshot({ persist: false });
+    }
     state.clock.running = true;
     state.clock.lastTickAt = Date.now();
   }
@@ -428,7 +431,7 @@ function resetStagedLineup() {
   render();
 }
 
-function commitSnapshot() {
+function commitSnapshot({ persist = true } = {}) {
   accrueTime();
   ensureAssignmentKeys();
 
@@ -456,8 +459,10 @@ function commitSnapshot() {
     "Lineup set",
     changes.length ? summarizeChanges(changes) : "No lineup changes",
   );
-  saveState();
-  render();
+  if (persist) {
+    saveState();
+    render();
+  }
 }
 
 function closeLiveStints() {
