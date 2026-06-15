@@ -419,8 +419,26 @@ button {
   display: flex;
   flex: 0 0 auto;
   flex-wrap: wrap;
+  align-items: end;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.roster-sort-control {
+  display: grid;
+  min-width: 150px;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.roster-sort-control select {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  text-transform: none;
 }
 
 .formation-form {

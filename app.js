@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = "lineup-state-v1";
 const app = document.getElementById("app");
+const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 let state = loadState();
 let lastSaveAt = 0;
@@ -15,6 +16,7 @@ function createState() {
     view: "formation",
     formation: "2-3-1",
     formationError: "",
+    rosterSort: "name",
     selectedPlayerId: null,
     players: [],
     liveAssignments: {},
@@ -39,6 +41,7 @@ function loadState() {
       ...base,
       ...saved,
       clock: { ...base.clock, ...(saved.clock || {}), running: false, lastTickAt: null },
+      rosterSort: normalizeRosterSort(saved.rosterSort),
       players: Array.isArray(saved.players) ? saved.players.map(normalizePlayer) : [],
       events: Array.isArray(saved.events) ? saved.events.slice(0, 30) : [],
       liveAssignments: saved.liveAssignments || {},
@@ -48,6 +51,10 @@ function loadState() {
   } catch {
     return createState();
   }
+}
+
+function normalizeRosterSort(value) {
+  return value === "playtime" ? "playtime" : "name";
 }
 
 function normalizePlayer(player) {
@@ -537,6 +544,25 @@ function getInactivePlayers() {
   return state.players.filter((player) => !player.active);
 }
 
+function comparePlayersByName(a, b) {
+  const name = NAME_COLLATOR.compare(a.name, b.name);
+  if (name) return name;
+  const number = NAME_COLLATOR.compare(a.number, b.number);
+  if (number) return number;
+  return NAME_COLLATOR.compare(a.id, b.id);
+}
+
+function getRosterPlayers() {
+  return [...state.players].sort((a, b) => {
+    if (state.rosterSort === "playtime") {
+      const time = Number(b.totalSeconds || 0) - Number(a.totalSeconds || 0);
+      if (time) return time;
+    }
+
+    return comparePlayersByName(a, b);
+  });
+}
+
 function getChangedSlots() {
   return getSlots().filter((slot) => {
     return (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
@@ -732,6 +758,13 @@ function renderRoster() {
           <button class="button green" type="submit">Add</button>
         </form>
         <div class="roster-actions">
+          <label class="roster-sort-control" for="roster-sort">
+            <span>Sort</span>
+            <select id="roster-sort" data-action="set-roster-sort">
+              <option value="name" ${state.rosterSort === "name" ? "selected" : ""}>Name</option>
+              <option value="playtime" ${state.rosterSort === "playtime" ? "selected" : ""}>Playtime</option>
+            </select>
+          </label>
           <button class="button secondary" type="button" data-action="reset-played-time">
             ${renderIcon("refresh")}
             <span>Reset time</span>
@@ -775,7 +808,7 @@ function renderRosterTable() {
         </tr>
       </thead>
       <tbody>
-        ${state.players.map(renderRosterRow).join("")}
+        ${getRosterPlayers().map(renderRosterRow).join("")}
       </tbody>
     </table>
   `;
@@ -1386,6 +1419,12 @@ document.addEventListener("change", (event) => {
 
   if (target.dataset.action === "stage-select") {
     setSlotStage(target.dataset.slotId, target.value);
+  }
+
+  if (target.dataset.action === "set-roster-sort") {
+    state.rosterSort = normalizeRosterSort(target.value);
+    saveState();
+    render();
   }
 });
 
