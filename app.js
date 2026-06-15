@@ -1129,14 +1129,6 @@ function renderSlotRow(slot) {
             <strong>${staged ? escapeHtml(staged.name) : current ? "Off" : "Open"}</strong>
           </div>
         </div>
-        <div class="slot-controls">
-          <label class="visually-hidden" for="select-${slot.id}">Set ${escapeHtml(slot.label)}</label>
-          <select id="select-${slot.id}" data-action="stage-select" data-slot-id="${slot.id}">
-            ${renderPlayerOptions(staged ? staged.id : "")}
-          </select>
-          <button class="button small secondary" data-action="keep-slot" data-slot-id="${slot.id}">Keep</button>
-          <button class="button small ghost" data-action="clear-slot" data-slot-id="${slot.id}">Clear</button>
-        </div>
       </div>
     </div>
   `;
