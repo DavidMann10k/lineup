@@ -573,12 +573,43 @@ function render() {
       <main class="content">
         ${state.view === "roster" ? renderRoster() : renderFormation()}
       </main>
+      ${renderFooter()}
       ${renderPlayerModal()}
     </div>
   `;
   wireDragAndDrop();
   updateDynamicDom();
   restorePendingFocus();
+}
+
+function renderFooter() {
+  return `
+    <footer class="app-footer">
+      <div class="footer-sales">
+        <p>Like this custom mini-application? Want one customized and branded for your organization? It's easier than you think.</p>
+        <button
+          type="button"
+          class="footer-cta"
+          data-action="contact-owner"
+        >I want one</button>
+      </div>
+      <div class="footer-credit">
+        <span>Created by David Mann</span>
+        <a href="https://github.com/DavidMann10k" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://mann.engineer" target="_blank" rel="noopener noreferrer">mann.engineer</a>
+      </div>
+    </footer>
+  `;
+}
+
+function buildContactHref() {
+  const user = ["da", "vid"].join("");
+  const host = ["mann", "engineer"].join(".");
+  const subject = encodeURIComponent("Custom mini-application inquiry");
+  const body = encodeURIComponent(
+    "Hi David,\n\nI'd like to talk about a custom mini-application for my organization.\n",
+  );
+  return `mailto:${user}@${host}?subject=${subject}&body=${body}`;
 }
 
 function restorePendingFocus() {
@@ -1253,6 +1284,11 @@ document.addEventListener("click", (event) => {
     state.view = target.dataset.view;
     saveState();
     render();
+  }
+
+  if (action === "contact-owner") {
+    event.preventDefault();
+    window.location.href = buildContactHref();
   }
 
   if (action === "toggle-clock") toggleClock();
