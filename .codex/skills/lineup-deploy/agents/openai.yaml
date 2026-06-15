@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lineup Deploy"
+  short_description: "Deploy Lineup through GitHub-triggered Cloudflare builds."
+  default_prompt: "Prepare, validate, or troubleshoot the Lineup Cloudflare deployment."
