@@ -18,8 +18,9 @@ function createState() {
     view: "formation",
     formation: "2-3-1",
     formationError: "",
-    rosterSort: "name",
+    rosterSort: "playtime",
     rosterSortDirection: "asc",
+    rosterSortDefaultVersion: 2,
     selectedPlayerId: null,
     players: [],
     liveAssignments: {},
@@ -40,13 +41,23 @@ function loadState() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved || typeof saved !== "object") return createState();
     const base = createState();
-    const rosterSort = normalizeRosterSort(saved.rosterSort);
+    const useNewRosterDefault =
+      !saved.rosterSortDefaultVersion &&
+      (!Object.prototype.hasOwnProperty.call(saved, "rosterSort") ||
+        (saved.rosterSort === "name" && (!saved.rosterSortDirection || saved.rosterSortDirection === "asc")));
+    const rosterSort = useNewRosterDefault
+      ? base.rosterSort
+      : normalizeRosterSort(saved.rosterSort, base.rosterSort);
+    const rosterSortDirection = useNewRosterDefault
+      ? base.rosterSortDirection
+      : normalizeRosterSortDirection(saved.rosterSortDirection, rosterSort);
     return {
       ...base,
       ...saved,
       clock: { ...base.clock, ...(saved.clock || {}), running: false, lastTickAt: null },
       rosterSort,
-      rosterSortDirection: normalizeRosterSortDirection(saved.rosterSortDirection, rosterSort),
+      rosterSortDirection,
+      rosterSortDefaultVersion: base.rosterSortDefaultVersion,
       players: Array.isArray(saved.players) ? saved.players.map(normalizePlayer) : [],
       events: Array.isArray(saved.events) ? saved.events.slice(0, 30) : [],
       liveAssignments: saved.liveAssignments || {},
@@ -58,15 +69,15 @@ function loadState() {
   }
 }
 
-function normalizeRosterSort(value) {
-  return value === "playtime" || value === "active" ? value : "name";
+function normalizeRosterSort(value, fallback = "playtime") {
+  return value === "playtime" || value === "active" || value === "name" ? value : fallback;
 }
 
 function defaultRosterSortDirection(sortKey) {
   return sortKey === "name" ? "asc" : "desc";
 }
 
-function normalizeRosterSortDirection(value, sortKey = "name") {
+function normalizeRosterSortDirection(value, sortKey = "playtime") {
   if (value === "asc" || value === "desc") return value;
   return defaultRosterSortDirection(sortKey);
 }
@@ -1059,7 +1070,7 @@ function renderRosterTable() {
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody data-roster-body>
         ${getRosterPlayers().map(renderRosterRow).join("")}
       </tbody>
     </table>
@@ -1091,7 +1102,7 @@ function renderRosterSortHeader(label, sortKey) {
 function renderRosterRow(player) {
   const playtimeIncreasing = isPlayerPlaytimeIncreasing(player);
   return `
-    <tr>
+    <tr data-player-row="${player.id}">
       <td>
         <div class="player-name-cell">
           <span class="mini-bubble roster-badge">${escapeHtml(rosterBadgeText(player))}</span>
@@ -1586,6 +1597,28 @@ function updateDynamicDom() {
   document.querySelectorAll("[data-player-usage]").forEach((node) => {
     const player = getPlayer(node.dataset.playerUsage);
     if (player) node.innerHTML = renderUsageReadout(player);
+  });
+  updateRosterRowOrder();
+}
+
+function updateRosterRowOrder() {
+  if (state.rosterSort !== "playtime") return;
+
+  const body = document.querySelector("[data-roster-body]");
+  if (!body) return;
+
+  const rowsById = new Map(
+    Array.from(body.querySelectorAll("[data-player-row]")).map((row) => [row.dataset.playerRow, row]),
+  );
+  const orderedIds = getRosterPlayers().map((player) => player.id);
+  const currentIds = Array.from(rowsById.keys());
+
+  if (orderedIds.length !== currentIds.length) return;
+  if (orderedIds.every((id, index) => id === currentIds[index])) return;
+
+  orderedIds.forEach((id) => {
+    const row = rowsById.get(id);
+    if (row) body.appendChild(row);
   });
 }
 
