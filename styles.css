@@ -19,9 +19,10 @@
   --pos-f: #c83d34;
   --pos-be: #64748b;
   --pos-in: #8a94a6;
-  --field: #2f8e58;
-  --field-dark: #247548;
-  --field-line: rgba(255, 255, 255, 0.78);
+  --field: #34865a;
+  --field-dark: #2b704c;
+  --field-line: rgba(255, 255, 255, 0.58);
+  --field-stripe: rgba(255, 255, 255, 0.035);
   --shadow: 0 10px 30px rgba(23, 33, 43, 0.08);
 }
 
@@ -507,8 +508,7 @@ button:focus-visible {
   border: 3px solid var(--field-line);
   border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 50%, transparent 50%) 0 0 /
-      80px 100%,
+    linear-gradient(90deg, var(--field-stripe) 50%, transparent 50%) 0 0 / 80px 100%,
     linear-gradient(180deg, var(--field), var(--field-dark));
 }
 
