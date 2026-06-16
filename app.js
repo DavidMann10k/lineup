@@ -1,8 +1,10 @@
 "use strict";
 
-const STORAGE_KEY = "lineup-state-v1";
+const lineupCore = window.LineupCore;
+if (!lineupCore) throw new Error("LineupCore failed to load.");
+
+const STORAGE_KEY = lineupCore.STORAGE_KEY;
 const app = document.getElementById("app");
-const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 let state = loadState();
 let pendingFocusSelector = null;
@@ -13,344 +15,36 @@ let pendingViewTransition = null;
 let suppressNextChipClick = false;
 
 function createState() {
-  return {
-    view: "formation",
-    formation: "2-3-1",
-    formationError: "",
-    rosterSort: "playtime",
-    rosterSortDirection: "asc",
-    rosterSortDefaultVersion: 2,
-    selectedPlayerId: null,
-    players: [],
-    liveAssignments: {},
-    stagedAssignments: {},
-    openStints: {},
-    events: [],
-    clock: {
-      running: false,
-      elapsedSeconds: 0,
-      period: 1,
-      lastTickAt: null,
-    },
-  };
+  return lineupCore.createState();
 }
 
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!saved || typeof saved !== "object") return createState();
-    const base = createState();
-    const useNewRosterDefault =
-      !saved.rosterSortDefaultVersion &&
-      (!Object.prototype.hasOwnProperty.call(saved, "rosterSort") ||
-        (saved.rosterSort === "name" && (!saved.rosterSortDirection || saved.rosterSortDirection === "asc")));
-    const rosterSort = useNewRosterDefault
-      ? base.rosterSort
-      : normalizeRosterSort(saved.rosterSort, base.rosterSort);
-    const rosterSortDirection = useNewRosterDefault
-      ? base.rosterSortDirection
-      : normalizeRosterSortDirection(saved.rosterSortDirection, rosterSort);
-    return {
-      ...base,
-      ...saved,
-      clock: normalizeClock({ ...base.clock, ...(saved.clock || {}) }),
-      rosterSort,
-      rosterSortDirection,
-      rosterSortDefaultVersion: base.rosterSortDefaultVersion,
-      players: Array.isArray(saved.players) ? saved.players.map(normalizePlayer) : [],
-      events: Array.isArray(saved.events) ? saved.events.slice(0, 30) : [],
-      liveAssignments: saved.liveAssignments || {},
-      stagedAssignments: saved.stagedAssignments || {},
-      openStints: saved.openStints || {},
-    };
+    return lineupCore.normalizeSavedState(saved);
   } catch {
     return createState();
   }
-}
-
-function normalizeRosterSort(value, fallback = "playtime") {
-  return value === "playtime" || value === "active" || value === "name" ? value : fallback;
-}
-
-function normalizeClock(clock) {
-  const lastTickAt = Number(clock.lastTickAt || 0);
-  const period = Number(clock.period || 1);
-
-  return {
-    running: Boolean(clock.running),
-    elapsedSeconds: Math.max(0, Number(clock.elapsedSeconds || 0)),
-    period: Number.isFinite(period) && period >= 1 ? Math.floor(period) : 1,
-    lastTickAt: Number.isFinite(lastTickAt) && lastTickAt > 0 ? lastTickAt : null,
-  };
-}
-
-function defaultRosterSortDirection(sortKey) {
-  return sortKey === "name" ? "asc" : "desc";
-}
-
-function normalizeRosterSortDirection(value, sortKey = "playtime") {
-  if (value === "asc" || value === "desc") return value;
-  return defaultRosterSortDirection(sortKey);
-}
-
-function normalizePlayer(player) {
-  return {
-    id: player.id || uid("player"),
-    name: player.name || "Unnamed player",
-    number: player.number || "",
-    active: player.active !== false,
-    totalSeconds: Number(player.totalSeconds || 0),
-    benchSeconds: Number(player.benchSeconds || 0),
-    positionSeconds: player.positionSeconds || {},
-    history: Array.isArray(player.history) ? player.history : [],
-  };
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function uid(prefix) {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 function getPlayer(id) {
-  return state.players.find((player) => player.id === id) || null;
-}
-
-function normalizeFormation(value) {
-  const cleaned = String(value || "")
-    .trim()
-    .replace(/\s+/g, "");
-  const parts = cleaned.split("-");
-  let hasGoalie = false;
-  const rowParts = [];
-
-  if (!cleaned || parts.some((part) => !part)) {
-    return { error: "Use soccer notation like G-2-3-1, 2-3-1, or 4-3-3." };
-  }
-
-  for (const part of parts) {
-    if (/^g$/i.test(part)) {
-      if (hasGoalie) return { error: "Use only one goalie marker." };
-      hasGoalie = true;
-      continue;
-    }
-
-    if (!/^\d{1,2}$/.test(part)) {
-      return { error: "Use soccer notation like G-2-3-1, 2-3-1, or 4-3-3." };
-    }
-
-    rowParts.push(part);
-  }
-
-  if (!rowParts.length) {
-    return { error: "Add at least one formation line." };
-  }
-
-  const rows = rowParts.map((part) => Number(part));
-  const total = rows.reduce((sum, count) => sum + count, 0);
-
-  if (rows.some((count) => !Number.isInteger(count) || count < 1 || count > 6)) {
-    return { error: "Each formation line needs 1 to 6 players." };
-  }
-
-  const maxOutfield = hasGoalie ? 10 : 11;
-  if (total > maxOutfield) {
-    return { error: "Use 10 or fewer outfield spots with G, or 11 or fewer without G." };
-  }
-
-  return { value: `${hasGoalie ? "G-" : ""}${rowParts.join("-")}`, rows, hasGoalie };
-}
-
-function parseFormation() {
-  const result = normalizeFormation(state.formation);
-  if (result.error) return { rows: [2, 3, 1], hasGoalie: false };
-  return result;
+  return lineupCore.getPlayer(state, id);
 }
 
 function getSlots() {
-  const formation = parseFormation();
-  const rows = formation.rows;
-  const slots = [];
-
-  if (formation.hasGoalie) {
-    slots.push({
-      id: "slot-gk",
-      label: "GK",
-      role: "Goalkeeper",
-      x: 50,
-      y: 91,
-    });
-  }
-
-  const rowCount = rows.length;
-  let outfieldIndex = 1;
-
-  rows.forEach((count, rowIndex) => {
-    const topY = 23;
-    const bottomY = formation.hasGoalie ? 74 : 84;
-    const y =
-      rowCount === 1
-        ? 52
-        : bottomY - (bottomY - topY) * (rowIndex / Math.max(1, rowCount - 1));
-    const prefix = rowIndex === 0 ? "D" : rowIndex === rowCount - 1 ? "F" : "M";
-    const role = prefix === "D" ? "Defense" : prefix === "F" ? "Forward" : "Midfield";
-    const labels = labelsForLine(prefix, count);
-
-    for (let index = 0; index < count; index += 1) {
-      slots.push({
-        id: `slot-${outfieldIndex}`,
-        label: labels[index],
-        role,
-        x: (100 / (count + 1)) * (index + 1),
-        y,
-      });
-      outfieldIndex += 1;
-    }
-  });
-
-  return slots;
-}
-
-function labelsForLine(prefix, count) {
-  const labelSets = {
-    D: {
-      1: ["CB"],
-      2: ["LB", "RB"],
-      3: ["LB", "CB", "RB"],
-      4: ["LB", "LCB", "RCB", "RB"],
-      5: ["LWB", "LB", "CB", "RB", "RWB"],
-      6: ["LWB", "LB", "LCB", "RCB", "RB", "RWB"],
-    },
-    M: {
-      1: ["CM"],
-      2: ["LM", "RM"],
-      3: ["LM", "CM", "RM"],
-      4: ["LM", "LCM", "RCM", "RM"],
-      5: ["LW", "LM", "CM", "RM", "RW"],
-      6: ["LW", "LM", "LCM", "RCM", "RM", "RW"],
-    },
-    F: {
-      1: ["CF"],
-      2: ["LF", "RF"],
-      3: ["LF", "CF", "RF"],
-      4: ["LW", "LF", "RF", "RW"],
-      5: ["LW", "LF", "CF", "RF", "RW"],
-      6: ["LW", "LF", "LCF", "RCF", "RF", "RW"],
-    },
-  };
-
-  return (
-    labelSets[prefix]?.[count] ||
-    Array.from({ length: count }, (_, index) => `${prefix}${index + 1}`)
-  );
+  return lineupCore.getSlots(state);
 }
 
 function ensureAssignmentKeys() {
-  const validIds = new Set(getSlots().map((slot) => slot.id));
-  const livePlayerIds = new Set();
-  const stagedPlayerIds = new Set();
-  let changed = false;
-
-  for (const key of Object.keys(state.liveAssignments)) {
-    if (!validIds.has(key)) {
-      delete state.liveAssignments[key];
-      changed = true;
-    }
-  }
-
-  for (const key of Object.keys(state.stagedAssignments)) {
-    if (!validIds.has(key)) {
-      delete state.stagedAssignments[key];
-      changed = true;
-    }
-  }
-
-  for (const key of Object.keys(state.openStints)) {
-    if (!validIds.has(key)) {
-      delete state.openStints[key];
-      changed = true;
-    }
-  }
-
-  for (const slotId of validIds) {
-    const livePlayerId = state.liveAssignments[slotId];
-    if (livePlayerId && (!getPlayer(livePlayerId) || livePlayerIds.has(livePlayerId))) {
-      state.liveAssignments[slotId] = null;
-      changed = true;
-    } else if (livePlayerId) {
-      livePlayerIds.add(livePlayerId);
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(state.stagedAssignments, slotId)) {
-      state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
-      changed = true;
-    }
-
-    const stagedPlayerId = state.stagedAssignments[slotId];
-    if (stagedPlayerId && (!getPlayer(stagedPlayerId) || stagedPlayerIds.has(stagedPlayerId))) {
-      state.stagedAssignments[slotId] = null;
-      changed = true;
-    } else if (stagedPlayerId) {
-      stagedPlayerIds.add(stagedPlayerId);
-    }
-  }
-
-  return changed;
-}
-
-function remapAssignmentsByPosition(previousSlots, nextSlots, assignments) {
-  const assignmentsByLabel = new Map();
-
-  for (const slot of previousSlots) {
-    const playerId = assignments[slot.id];
-    if (playerId && getPlayer(playerId)) assignmentsByLabel.set(slot.label, playerId);
-  }
-
-  const nextAssignments = {};
-  const usedPlayerIds = new Set();
-
-  for (const slot of nextSlots) {
-    const playerId = assignmentsByLabel.get(slot.label) || null;
-    if (playerId && !usedPlayerIds.has(playerId)) {
-      nextAssignments[slot.id] = playerId;
-      usedPlayerIds.add(playerId);
-    } else {
-      nextAssignments[slot.id] = null;
-    }
-  }
-
-  return nextAssignments;
+  return lineupCore.ensureAssignmentKeys(state);
 }
 
 function accrueTime() {
-  if (!state.clock.running) return;
-
-  const now = Date.now();
-  if (!state.clock.lastTickAt) state.clock.lastTickAt = now;
-  if (state.clock.lastTickAt > now) state.clock.lastTickAt = now;
-
-  const delta = Math.max(0, (now - state.clock.lastTickAt) / 1000);
-  if (delta < 0.05) return;
-
-  const slots = getSlots();
-  const livePlayerIds = new Set();
-  state.clock.elapsedSeconds += delta;
-  state.clock.lastTickAt = now;
-
-  for (const slot of slots) {
-    const player = getPlayer(state.liveAssignments[slot.id]);
-    if (!player) continue;
-    livePlayerIds.add(player.id);
-    player.totalSeconds = Number(player.totalSeconds || 0) + delta;
-    player.positionSeconds[slot.label] = Number(player.positionSeconds[slot.label] || 0) + delta;
-  }
-
-  for (const player of state.players) {
-    if (!player.active || livePlayerIds.has(player.id)) continue;
-    player.benchSeconds = Number(player.benchSeconds || 0) + delta;
-  }
+  lineupCore.accrueTime(state);
 }
 
 function resumeRunningClock() {
@@ -369,43 +63,23 @@ function persistRunningClock() {
 }
 
 function toggleClock() {
-  ensureAssignmentKeys();
-  if (state.clock.running) {
-    accrueTime();
-    state.clock.running = false;
-    state.clock.lastTickAt = null;
-  } else {
-    if (!hasCompleteLiveLineup()) return;
-    state.clock.running = true;
-    state.clock.lastTickAt = Date.now();
-  }
+  const result = lineupCore.toggleClock(state);
+  if (!result.ok) return;
   saveState();
   render();
 }
 
 function nextPeriod() {
-  ensureAssignmentKeys();
-  if (!hasCompleteLiveLineup()) return;
-  accrueTime();
-  state.clock.running = false;
-  state.clock.lastTickAt = null;
-  state.clock.period += 1;
-  addEvent("Period advanced", `Period ${state.clock.period}`);
+  const result = lineupCore.nextPeriod(state);
+  if (!result.ok) return;
   saveState();
   render();
 }
 
 function resetClock() {
-  if (isClockAtZero()) return;
+  if (lineupCore.isClockAtZero(state)) return;
   if (!window.confirm("Reset the game clock? Player playtime totals will stay intact.")) return;
-  accrueTime();
-  closeLiveStints();
-  state.clock.running = false;
-  state.clock.elapsedSeconds = 0;
-  state.clock.period = 1;
-  state.clock.lastTickAt = null;
-  openLiveStints();
-  addEvent("Clock reset", "Player totals kept");
+  lineupCore.resetClock(state);
   saveState();
   render();
 }
@@ -419,103 +93,27 @@ function resetForNewGame() {
     return;
   }
 
-  state.clock.running = false;
-  state.clock.elapsedSeconds = 0;
-  state.clock.period = 1;
-  state.clock.lastTickAt = null;
-  state.openStints = {};
-  state.events = [];
-  state.liveAssignments = {};
-  state.stagedAssignments = {};
-  state.selectedPlayerId = null;
-
-  for (const player of state.players) {
-    player.totalSeconds = 0;
-    player.benchSeconds = 0;
-    player.positionSeconds = {};
-    player.history = [];
-  }
-
+  lineupCore.resetForNewGame(state);
   saveState();
   render();
 }
 
 function applyFormation(value) {
-  const result = normalizeFormation(value);
-  if (result.error) {
-    state.formationError = result.error;
-    render();
-    return;
-  }
-
-  if (result.value === state.formation) {
-    state.formationError = "";
-    saveState();
-    render();
-    return;
-  }
-
-  const previousSlots = getSlots();
-  const previousLiveAssignments = { ...state.liveAssignments };
-  const previousStagedAssignments = { ...state.stagedAssignments };
-
-  accrueTime();
-  closeLiveStints();
-
-  state.formation = result.value;
-  state.formationError = "";
-  const nextSlots = getSlots();
-  state.liveAssignments = remapAssignmentsByPosition(
-    previousSlots,
-    nextSlots,
-    previousLiveAssignments,
-  );
-  state.stagedAssignments = remapAssignmentsByPosition(
-    previousSlots,
-    nextSlots,
-    previousStagedAssignments,
-  );
-  state.openStints = {};
-  ensureAssignmentKeys();
-  openLiveStints();
-
-  addEvent("Formation updated", result.value);
-  saveState();
+  const result = lineupCore.applyFormation(state, value);
+  if (result.ok) saveState();
   render();
 }
 
 function addPlayer(name, number) {
-  const trimmedName = name.trim();
-  if (!trimmedName) return;
-
-  state.players.push({
-    id: uid("player"),
-    name: trimmedName,
-    number: number.trim(),
-    active: true,
-    totalSeconds: 0,
-    benchSeconds: 0,
-    positionSeconds: {},
-    history: [],
-  });
-
+  const result = lineupCore.addPlayer(state, name, number);
+  if (!result.ok) return;
   saveState();
   render();
 }
 
 function setPlayerActive(playerId, active) {
-  accrueTime();
-  const player = getPlayer(playerId);
-  if (!player) return;
-  player.active = active;
-
-  if (!active) {
-    for (const slotId of Object.keys(state.stagedAssignments)) {
-      if (state.stagedAssignments[slotId] === playerId) state.stagedAssignments[slotId] = null;
-    }
-    if (state.selectedPlayerId === playerId) state.selectedPlayerId = null;
-  }
-
+  const result = lineupCore.setPlayerActive(state, playerId, active);
+  if (!result.ok) return;
   saveState();
   render();
 }
@@ -525,379 +123,101 @@ function removePlayer(playerId) {
   if (!player) return;
   if (!window.confirm(`Remove ${player.name} from this lineup?`)) return;
 
-  accrueTime();
-  state.players = state.players.filter((entry) => entry.id !== playerId);
-  for (const assignments of [state.liveAssignments, state.stagedAssignments]) {
-    for (const slotId of Object.keys(assignments)) {
-      if (assignments[slotId] === playerId) assignments[slotId] = null;
-    }
-  }
-
-  for (const slotId of Object.keys(state.openStints)) {
-    if (state.openStints[slotId].playerId === playerId) delete state.openStints[slotId];
-  }
-
-  if (state.selectedPlayerId === playerId) state.selectedPlayerId = null;
+  lineupCore.removePlayer(state, playerId);
   if (detailPlayerId === playerId) detailPlayerId = null;
   saveState();
   render();
 }
 
 function stagePlayerInSlot(playerId, slotId) {
-  accrueTime();
-  ensureAssignmentKeys();
-  const player = getPlayer(playerId);
-  if (!player || !player.active) return;
-
-  for (const key of Object.keys(state.stagedAssignments)) {
-    if (state.stagedAssignments[key] === playerId) state.stagedAssignments[key] = null;
-  }
-
-  state.stagedAssignments[slotId] = playerId;
-  state.selectedPlayerId = playerId;
+  const result = lineupCore.stagePlayerInSlot(state, playerId, slotId);
+  if (!result.ok) return;
   saveState();
   render();
 }
 
 function stageFieldPlayerInSlot(playerId, sourceSlotId, targetSlotId) {
-  accrueTime();
-  ensureAssignmentKeys();
-  const player = getPlayer(playerId);
-  if (!player || !player.active) return;
-  if (!sourceSlotId || sourceSlotId === targetSlotId) return;
-
-  const displacedPlayerId = state.stagedAssignments[targetSlotId] || state.liveAssignments[targetSlotId] || null;
-
-  for (const key of Object.keys(state.stagedAssignments)) {
-    if (state.stagedAssignments[key] === playerId) state.stagedAssignments[key] = null;
-    if (displacedPlayerId && state.stagedAssignments[key] === displacedPlayerId) state.stagedAssignments[key] = null;
-  }
-
-  state.stagedAssignments[targetSlotId] = playerId;
-  if (Object.prototype.hasOwnProperty.call(state.stagedAssignments, sourceSlotId)) {
-    state.stagedAssignments[sourceSlotId] = displacedPlayerId && displacedPlayerId !== playerId ? displacedPlayerId : null;
-  }
-  state.selectedPlayerId = playerId;
+  const result = lineupCore.stageFieldPlayerInSlot(state, playerId, sourceSlotId, targetSlotId);
+  if (!result.ok) return;
   saveState();
   render();
 }
 
 function setSlotStage(slotId, playerId) {
-  accrueTime();
-  ensureAssignmentKeys();
-
-  if (!playerId) {
-    state.stagedAssignments[slotId] = null;
-    saveState();
-    render();
-    return;
-  }
-
-  stagePlayerInSlot(playerId, slotId);
+  const result = lineupCore.setSlotStage(state, slotId, playerId);
+  if (!result.ok) return;
+  saveState();
+  render();
 }
 
 function stageSlotToBench(slotId, draggedPlayerId = null) {
-  accrueTime();
-  ensureAssignmentKeys();
-
-  if (!Object.prototype.hasOwnProperty.call(state.stagedAssignments, slotId)) return;
-  const livePlayerId = state.liveAssignments[slotId] || null;
-  const stagedPlayerId = state.stagedAssignments[slotId] || null;
-  if (!livePlayerId && !stagedPlayerId) return;
-
-  const draggedDestination = draggedPlayerId
-    ? getSlots().find((slot) => slot.id !== slotId && state.stagedAssignments[slot.id] === draggedPlayerId)
-    : null;
-  if (draggedPlayerId === livePlayerId && draggedDestination && stagedPlayerId && stagedPlayerId !== livePlayerId) {
-    state.stagedAssignments[draggedDestination.id] = null;
-    if (state.selectedPlayerId === livePlayerId || state.selectedPlayerId === stagedPlayerId) state.selectedPlayerId = null;
-    saveState();
-    render();
-    return;
-  }
-
-  if (livePlayerId && stagedPlayerId && livePlayerId !== stagedPlayerId) {
-    state.stagedAssignments[slotId] = livePlayerId;
-    if (state.selectedPlayerId === stagedPlayerId) state.selectedPlayerId = null;
-    saveState();
-    render();
-    return;
-  }
-
-  state.stagedAssignments[slotId] = null;
-  if (state.selectedPlayerId === livePlayerId || state.selectedPlayerId === stagedPlayerId) state.selectedPlayerId = null;
+  const result = lineupCore.stageSlotToBench(state, slotId, draggedPlayerId);
+  if (!result.ok) return;
   saveState();
   render();
 }
 
 function keepSlot(slotId) {
-  accrueTime();
-  state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
+  lineupCore.keepSlot(state, slotId);
   saveState();
   render();
 }
 
 function keepSwap(slotId, pairSlotId) {
-  accrueTime();
-  if (slotId) state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
-  if (pairSlotId) state.stagedAssignments[pairSlotId] = state.liveAssignments[pairSlotId] || null;
+  lineupCore.keepSwap(state, slotId, pairSlotId);
   saveState();
   render();
 }
 
 function setRosterSort(sortKey) {
-  const nextSort = normalizeRosterSort(sortKey);
-  if (state.rosterSort === nextSort) {
-    state.rosterSortDirection = state.rosterSortDirection === "asc" ? "desc" : "asc";
-  } else {
-    state.rosterSort = nextSort;
-    state.rosterSortDirection = defaultRosterSortDirection(nextSort);
-  }
+  lineupCore.setRosterSort(state, sortKey);
   saveState();
   render();
 }
 
 function commitSnapshot({ persist = true } = {}) {
-  accrueTime();
-  ensureAssignmentKeys();
-  if (!isStagedFormationFilled()) return;
-
-  const slots = getSlots();
-  const previous = { ...state.liveAssignments };
-  const next = {};
-  const changes = [];
-
-  for (const slot of slots) {
-    const before = previous[slot.id] || null;
-    const after = state.stagedAssignments[slot.id] || null;
-    next[slot.id] = after;
-
-    if (before === after) continue;
-
-    if (before) closeStint(slot.id, before, slot);
-    if (after) openStint(slot.id, after, slot);
-
-    changes.push(`${slot.label}: ${playerName(before)} to ${playerName(after)}`);
-  }
-
-  state.liveAssignments = next;
-  state.stagedAssignments = { ...next };
-  addEvent(
-    "Lineup set",
-    changes.length ? summarizeChanges(changes) : "No lineup changes",
-  );
+  const result = lineupCore.commitSnapshot(state);
+  if (!result.ok) return;
   if (persist) {
     saveState();
     render();
   }
 }
 
-function closeLiveStints() {
-  for (const slot of getSlots()) {
-    const playerId = state.liveAssignments[slot.id];
-    if (playerId) closeStint(slot.id, playerId, slot);
-  }
-}
-
-function openLiveStints() {
-  for (const slot of getSlots()) {
-    const playerId = state.liveAssignments[slot.id];
-    if (playerId) openStint(slot.id, playerId, slot);
-  }
-}
-
-function openStint(slotId, playerId, slot) {
-  state.openStints[slotId] = {
-    playerId,
-    position: slot.label,
-    startedAt: state.clock.elapsedSeconds,
-    period: state.clock.period,
-  };
-}
-
-function closeStint(slotId, playerId, slot) {
-  const player = getPlayer(playerId);
-  const stint = state.openStints[slotId] || {
-    playerId,
-    position: slot.label,
-    startedAt: state.clock.elapsedSeconds,
-    period: state.clock.period,
-  };
-
-  if (player) {
-    player.history.push({
-      position: stint.position,
-      startedAt: stint.startedAt,
-      endedAt: state.clock.elapsedSeconds,
-      period: stint.period,
-    });
-  }
-
-  delete state.openStints[slotId];
-}
-
-function addEvent(title, detail) {
-  state.events.unshift({
-    id: uid("event"),
-    title,
-    detail,
-    period: state.clock.period,
-    clock: state.clock.elapsedSeconds,
-    at: new Date().toISOString(),
-  });
-  state.events = state.events.slice(0, 30);
-}
-
-function summarizeChanges(changes) {
-  if (changes.length <= 3) return changes.join(", ");
-  return `${changes.slice(0, 3).join(", ")} and ${changes.length - 3} more`;
-}
-
-function playerName(playerId) {
-  const player = getPlayer(playerId);
-  return player ? player.name : "Open";
-}
-
-function getVisibleAssignmentPlayerIds(assignments) {
-  return new Set(getSlots().map((slot) => assignments[slot.id]).filter(Boolean));
-}
-
-function getLivePlayerIds() {
-  return getVisibleAssignmentPlayerIds(state.liveAssignments);
-}
-
 function isPlayerPlaytimeIncreasing(player) {
-  if (!state.clock.running || !player) return false;
-  return getLivePlayerIds().has(player.id);
-}
-
-function getStagedPlayerIds() {
-  return getVisibleAssignmentPlayerIds(state.stagedAssignments);
+  return lineupCore.isPlayerPlaytimeIncreasing(state, player);
 }
 
 function getBenchPlayers() {
-  const live = getLivePlayerIds();
-  const staged = getStagedPlayerIds();
-  return state.players.filter((player) => player.active && !live.has(player.id) && !staged.has(player.id));
+  return lineupCore.getBenchPlayers(state);
 }
 
 function getInactivePlayers() {
-  return state.players.filter((player) => !player.active);
-}
-
-function comparePlayersByName(a, b) {
-  const name = NAME_COLLATOR.compare(a.name, b.name);
-  if (name) return name;
-  const number = NAME_COLLATOR.compare(a.number, b.number);
-  if (number) return number;
-  return NAME_COLLATOR.compare(a.id, b.id);
-}
-
-function compareRosterPlayers(a, b) {
-  const direction = state.rosterSortDirection === "desc" ? -1 : 1;
-  let result = 0;
-
-  if (state.rosterSort === "playtime") {
-    result = Number(a.totalSeconds || 0) - Number(b.totalSeconds || 0);
-  } else if (state.rosterSort === "active") {
-    result = Number(Boolean(a.active)) - Number(Boolean(b.active));
-  } else {
-    result = comparePlayersByName(a, b);
-  }
-
-  if (result) return result * direction;
-  return comparePlayersByName(a, b);
+  return lineupCore.getInactivePlayers(state);
 }
 
 function getRosterPlayers() {
-  return [...state.players].sort(compareRosterPlayers);
-}
-
-function isClockAtZero() {
-  return Number(state.clock.elapsedSeconds || 0) <= 0;
-}
-
-function isAssignmentFormationFilled(assignments) {
-  ensureAssignmentKeys();
-  const usedPlayerIds = new Set();
-
-  return getSlots().every((slot) => {
-    const player = getPlayer(assignments[slot.id]);
-    if (!player || !player.active || usedPlayerIds.has(player.id)) return false;
-    usedPlayerIds.add(player.id);
-    return true;
-  });
+  return lineupCore.getRosterPlayers(state);
 }
 
 function isStagedFormationFilled() {
-  return isAssignmentFormationFilled(state.stagedAssignments);
+  return lineupCore.isStagedFormationFilled(state);
 }
 
 function hasCompleteLiveLineup() {
-  return isAssignmentFormationFilled(state.liveAssignments);
+  return lineupCore.hasCompleteLiveLineup(state);
 }
 
 function getPendingSubs() {
-  const slots = getSlots();
-  const destinationByPlayerId = new Map();
-  const handledSlotIds = new Set();
-  const rows = [];
-
-  for (const slot of slots) {
-    const livePlayerId = state.liveAssignments[slot.id] || null;
-    const stagedPlayerId = state.stagedAssignments[slot.id] || null;
-    if (stagedPlayerId && stagedPlayerId !== livePlayerId) {
-      destinationByPlayerId.set(stagedPlayerId, slot);
-    }
-  }
-
-  for (const slot of slots) {
-    if (handledSlotIds.has(slot.id)) continue;
-
-    const outgoing = getPlayer(state.liveAssignments[slot.id]);
-    const incoming = getPlayer(state.stagedAssignments[slot.id]);
-    if (!outgoing || incoming?.id === outgoing.id) continue;
-
-    const outgoingDestination = destinationByPlayerId.get(outgoing.id) || null;
-    if (incoming && outgoingDestination && outgoingDestination.id !== slot.id) {
-      const pairLivePlayerId = state.liveAssignments[outgoingDestination.id] || null;
-      const pairStagedPlayerId = state.stagedAssignments[outgoingDestination.id] || null;
-      if (pairLivePlayerId === incoming.id && pairStagedPlayerId === outgoing.id) {
-        rows.push({
-          slot: outgoingDestination,
-          pairedSlot: slot,
-          incoming: outgoing,
-          outgoing: incoming,
-          outgoingDestination: slot,
-        });
-        handledSlotIds.add(slot.id);
-        handledSlotIds.add(outgoingDestination.id);
-        continue;
-      }
-    }
-
-    rows.push({ slot, incoming, outgoing, outgoingDestination });
-  }
-
-  return rows;
+  return lineupCore.getPendingSubs(state);
 }
 
 function formatDuration(seconds) {
-  const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remaining = safeSeconds % 60;
-
-  return `${minutes}:${String(remaining).padStart(2, "0")}`;
+  return lineupCore.formatDuration(seconds);
 }
 
 function positionType(code) {
-  if (code === "GK") return "gk";
-  if (code === "BE") return "be";
-  if (code === "IN") return "in";
-  if (/B$/.test(code) || code.includes("CB") || code.includes("WB") || code.startsWith("D")) return "d";
-  if (code.includes("M") || code.startsWith("M")) return "m";
-  if (code.includes("F") || code.startsWith("F") || code.includes("W")) return "f";
-  return "unknown";
+  return lineupCore.positionType(code);
 }
 
 function positionClass(code) {
@@ -1024,13 +344,11 @@ function renderIcon(name) {
 function renderHeader() {
   return `
     <header class="app-header">
-      <div class="header-primary">
-        <img class="brand-mark" src="./assets/icon.svg" alt="">
-        <nav class="view-tabs" aria-label="Screens">
-          <button class="tab-button ${state.view === "roster" ? "active" : ""}" data-action="set-view" data-view="roster">Roster</button>
-          <button class="tab-button ${state.view === "formation" ? "active" : ""}" data-action="set-view" data-view="formation">Formation</button>
-        </nav>
-      </div>
+      <img class="brand-mark" src="./assets/icon.svg" alt="">
+      <nav class="view-tabs" aria-label="Screens">
+        <button class="tab-button ${state.view === "roster" ? "active" : ""}" data-action="set-view" data-view="roster">Roster</button>
+        <button class="tab-button ${state.view === "formation" ? "active" : ""}" data-action="set-view" data-view="formation">Formation</button>
+      </nav>
     </header>
   `;
 }
@@ -1249,7 +567,7 @@ function renderFormation() {
           ${renderFormationEditor()}
         </div>
 
-        <aside class="lineup-panel">
+        <aside>
           ${renderEventLog()}
         </aside>
       </div>
@@ -1484,49 +802,6 @@ function renderPlayerChip(player, inactive = false) {
   `;
 }
 
-function renderSlotRow(slot) {
-  const current = getPlayer(state.liveAssignments[slot.id]);
-  const staged = getPlayer(state.stagedAssignments[slot.id]);
-  const changed = (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
-
-  return `
-    <div class="slot-row ${changed ? "changed" : ""}">
-      <div class="slot-meta">
-        <strong>${renderPositionCode(slot.label)}</strong>
-        <span>${escapeHtml(slot.role)}</span>
-      </div>
-      <div class="slot-state">
-        <div class="slot-current-next">
-          <div>
-            <span>On</span>
-            <strong>${current ? escapeHtml(current.name) : "Open"}</strong>
-          </div>
-          <div>
-            <span>Next</span>
-            <strong>${staged ? escapeHtml(staged.name) : current ? "Off" : "Open"}</strong>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderPlayerOptions(selectedId) {
-  const liveIds = getLivePlayerIds();
-  const eligible = state.players.filter((player) => player.active || player.id === selectedId || liveIds.has(player.id));
-  return `
-    <option value="">Open</option>
-    ${eligible
-      .map(
-        (player) =>
-          `<option value="${player.id}" ${player.id === selectedId ? "selected" : ""}>${escapeHtml(player.name)}${
-            player.number ? ` #${escapeHtml(player.number)}` : ""
-          }</option>`,
-      )
-      .join("")}
-  `;
-}
-
 function renderEventLog() {
   return `
     <section class="event-log">
@@ -1579,7 +854,7 @@ function updateDynamicDom() {
     node.textContent = state.clock.period;
   });
   document.querySelectorAll("[data-reset-clock]").forEach((node) => {
-    node.hidden = isClockAtZero();
+    node.hidden = lineupCore.isClockAtZero(state);
   });
   document.querySelectorAll("[data-player-total]").forEach((node) => {
     const player = getPlayer(node.dataset.playerTotal);

@@ -17,18 +17,13 @@ The app is static HTML, CSS, and JavaScript. There is no backend. Player and mat
 
 ## Local Development
 
-Open `index.html` directly in a browser, or run the static build and serve the `dist/` folder:
-
-```bash
-bash scripts/build.sh
-python3 -m http.server 4173 --directory dist
-```
-
-Then open `http://localhost:4173`.
+Open `index.html` directly in a browser.
 
 ## Scripts
 
-- `bash scripts/build.sh`: copies only public app assets into `dist/`.
+- `npm test`: runs the dependency-free Node test suite for the lineup core.
+
+The test suite uses Node's built-in `node:test` runner and has no third-party dependencies.
 
 ## Cloudflare Deployment
 
@@ -37,10 +32,10 @@ The deployment path is GitHub to Cloudflare Pages. Push to GitHub, and let Cloud
 Recommended Cloudflare Pages build settings:
 
 - Root directory: `/`
-- Build command: `bash scripts/build.sh`
-- Build output directory: `dist`
+- Build command: none
+- Build output directory: `/`
 
-Do not use a deploy command for this project. The build creates `dist/`, and Cloudflare Pages publishes that directory.
+Do not use a deploy command for this project. Cloudflare Pages should publish the repository root.
 
 ## Custom Domain
 

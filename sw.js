@@ -1,8 +1,9 @@
-const CACHE_NAME = "lineup-pwa-v49";
+const CACHE_NAME = "lineup-pwa-v50";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./lineup-core.js",
   "./app.js",
   "./manifest.webmanifest",
   "./assets/icon.svg",

@@ -11,7 +11,7 @@ Treat GitHub as the source of deployment. Code is pushed to GitHub, Cloudflare c
 
 Publish the repository root. The app is intentionally served from root `index.html`.
 
-Do not maintain `dist/` for routine development, UI changes, PWA shell changes, or verification. Do not run `bash scripts/build.sh` unless the user explicitly asks to debug or use the legacy build script.
+Do not maintain `dist/` for routine development, UI changes, PWA shell changes, or verification. There is no build script; root files are the published app shell.
 
 Lineup is static. There is no backend deployment, database migration, or server-side state. Browser state lives in `localStorage`.
 
