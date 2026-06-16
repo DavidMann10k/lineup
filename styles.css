@@ -51,6 +51,8 @@ button {
 
 .app-shell {
   display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
   width: min(1580px, 100%);
   min-height: 100vh;
   margin: 0 auto;
@@ -61,13 +63,6 @@ button {
 .app-header {
   --header-control-height: 44px;
   display: flex;
-  align-items: center;
-  background: var(--bg);
-}
-
-.header-primary {
-  display: flex;
-  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   gap: var(--page-gap);
@@ -336,8 +331,7 @@ button {
   filter: brightness(0.96);
 }
 
-.button,
-.icon-button {
+.button {
   display: inline-flex;
   min-height: 38px;
   align-items: center;
@@ -356,13 +350,11 @@ button {
 }
 
 .button:hover,
-.icon-button:hover,
 .tab-button:hover {
   filter: brightness(0.96);
 }
 
-.button.secondary,
-.icon-button.secondary {
+.button.secondary {
   border-color: var(--line);
   background: var(--surface);
   color: var(--ink);
@@ -382,15 +374,13 @@ button {
   color: var(--muted);
 }
 
-.button.small,
-.icon-button.small {
+.button.small {
   min-height: 32px;
   padding: 6px 9px;
   font-size: 0.82rem;
 }
 
-.button:disabled,
-.icon-button:disabled {
+.button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
