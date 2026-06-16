@@ -10,6 +10,7 @@ let pendingFocusSelector = null;
 let detailPlayerId = null;
 let activeChipDrag = null;
 let activePageSwipe = null;
+let pendingViewTransition = null;
 let suppressNextChipClick = false;
 
 function createState() {
@@ -856,10 +857,13 @@ function escapeHtml(value) {
 
 function render() {
   ensureAssignmentKeys();
+  const viewTransitionClass = pendingViewTransition ? `view-transition view-swipe-${pendingViewTransition}` : "";
+  pendingViewTransition = null;
+
   app.innerHTML = `
     <div class="app-shell">
       ${renderHeader()}
-      <main class="content">
+      <main class="content ${viewTransitionClass}">
         ${state.view === "roster" ? renderRoster() : renderFormation()}
       </main>
       ${renderFooter()}
@@ -1578,6 +1582,7 @@ function endPageSwipe(event) {
   const nextView = dx < 0 ? "formation" : "roster";
   if (state.view === nextView) return;
 
+  pendingViewTransition = dx < 0 ? "left" : "right";
   state.view = nextView;
   saveState();
   render();
