@@ -1,0 +1,10 @@
+{
+  "name": "lineup",
+  "compatibility_date": "2026-06-16",
+  "build": {
+    "command": "bash scripts/build.sh"
+  },
+  "assets": {
+    "directory": "dist"
+  }
+}

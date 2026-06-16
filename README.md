@@ -17,12 +17,19 @@ The app is static HTML, CSS, and JavaScript. There is no backend. Player and mat
 
 ## Local Development
 
-Open `index.html` directly in a browser.
+Open `index.html` directly in a browser, or run the static build and serve the generated `dist/` folder:
+
+```bash
+npm run build
+python3 -m http.server 4173 --directory dist
+```
+
+Then open `http://localhost:4173`.
 
 ## Scripts
 
 - `npm test`: runs the dependency-free Node test suite for the lineup core.
-- `npm run build`: verifies the static deploy root is safe to publish.
+- `npm run build`: copies only public app assets into `dist/` and verifies that deploy root is safe to publish.
 
 The test suite uses Node's built-in `node:test` runner and also runs the static deploy verification. The project has no third-party dependencies.
 
@@ -34,12 +41,14 @@ Recommended Cloudflare Pages build settings:
 
 - Root directory: `/`
 - Build command: `npm run build`
-- Build output directory: `/`
+- Build output directory: `dist`
 - Deploy command: none
 
-Do not use a deploy command for this project. If Cloudflare logs show `Executing user deploy command: npx wrangler deploy`, the project settings are still wrong. Cloudflare Pages should run the verification build and then publish the repository root.
+This project does not need a deploy command when deployed as Cloudflare Pages. Pages should run the verification build and then publish `dist/`.
 
-Run `npm run build` locally before changing deployment settings; it checks for accidental Wrangler setup, dependencies, missing app shell files, and assets over Cloudflare's 25 MiB limit.
+The repo includes `wrangler.jsonc` as a guardrail for existing Wrangler-based deploy commands such as `npx wrangler deploy`: it runs `bash scripts/build.sh` and points Wrangler at `dist/`, so Wrangler cannot auto-detect the repository root and try to upload build-time files such as `node_modules/`.
+
+Run `npm run build` locally before changing deployment settings; it builds a clean static asset directory and checks for accidental Wrangler setup, dependencies, missing app shell files, and assets over Cloudflare's 25 MiB limit.
 
 ## Custom Domain
 

@@ -4,6 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..");
+const deployRoot = path.resolve(repoRoot, process.argv[2] || ".");
+const deployRootLabel = path.relative(repoRoot, deployRoot) || ".";
 const maxAssetBytes = 25 * 1024 * 1024;
 
 const requiredRootFiles = [
@@ -37,7 +39,7 @@ function fail(message) {
 }
 
 function exists(relativePath) {
-  return fs.existsSync(path.join(repoRoot, relativePath));
+  return fs.existsSync(path.join(deployRoot, relativePath));
 }
 
 function formatBytes(bytes) {
@@ -49,9 +51,13 @@ function readText(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+function readDeployText(relativePath) {
+  return fs.readFileSync(path.join(deployRoot, relativePath), "utf8");
+}
+
 function checkRequiredFiles() {
   for (const file of requiredRootFiles) {
-    if (!exists(file)) fail(`Missing required deploy asset: ${file}`);
+    if (!exists(file)) fail(`Missing required deploy asset in ${deployRootLabel}: ${file}`);
   }
 }
 
@@ -73,13 +79,13 @@ function checkPackageScripts() {
 function checkBlockedRootEntries() {
   for (const entry of blockedRootEntries) {
     if (exists(entry)) {
-      fail(`Blocked deploy-root entry found: ${entry}`);
+      fail(`Blocked deploy-root entry found in ${deployRootLabel}: ${entry}`);
     }
   }
 }
 
 function checkServiceWorkerShell() {
-  const sw = readText("sw.js");
+  const sw = readDeployText("sw.js");
   const match = sw.match(/const APP_SHELL = \[([\s\S]*?)\];/);
   if (!match) {
     fail("Could not find APP_SHELL in sw.js.");
@@ -88,12 +94,12 @@ function checkServiceWorkerShell() {
 
   for (const item of match[1].matchAll(/"([^"]+)"/g)) {
     const shellPath = item[1].replace(/^\.\//, "");
-    if (!exists(shellPath)) fail(`Service worker APP_SHELL references missing file: ${item[1]}`);
+    if (!exists(shellPath)) fail(`Service worker APP_SHELL references missing file in ${deployRootLabel}: ${item[1]}`);
   }
 }
 
 function walkAssets(relativeDir = "") {
-  const absoluteDir = path.join(repoRoot, relativeDir);
+  const absoluteDir = path.join(deployRoot, relativeDir);
   for (const entry of fs.readdirSync(absoluteDir, { withFileTypes: true })) {
     const relativePath = path.join(relativeDir, entry.name);
     const rootName = relativePath.split(path.sep)[0];
@@ -101,7 +107,7 @@ function walkAssets(relativeDir = "") {
     if (ignoredAssetRoots.has(rootName)) continue;
     if (blockedRootEntries.includes(rootName)) continue;
 
-    const absolutePath = path.join(repoRoot, relativePath);
+    const absolutePath = path.join(deployRoot, relativePath);
     if (entry.isDirectory()) {
       walkAssets(relativePath);
       continue;
@@ -111,7 +117,7 @@ function walkAssets(relativeDir = "") {
 
     const size = fs.statSync(absolutePath).size;
     if (size > maxAssetBytes) {
-      fail(`Deploy asset exceeds Cloudflare's 25 MiB limit: ${relativePath} (${formatBytes(size)})`);
+      fail(`Deploy asset exceeds Cloudflare's 25 MiB limit in ${deployRootLabel}: ${relativePath} (${formatBytes(size)})`);
     }
   }
 }
