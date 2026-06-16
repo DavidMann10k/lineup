@@ -13,6 +13,7 @@ let activeChipDrag = null;
 let activePageSwipe = null;
 let pendingViewTransition = null;
 let suppressNextChipClick = false;
+const INCOMING_BUBBLE_OFFSET = 32;
 
 function createState() {
   return lineupCore.createState();
@@ -275,6 +276,7 @@ function render() {
   wireDragAndDrop();
   wirePageSwipe();
   updateDynamicDom();
+  updateSubstitutionLayer();
   restorePendingFocus();
 }
 
@@ -653,6 +655,9 @@ function renderFormationEditor() {
 }
 
 function renderPitch() {
+  const slots = getSlots();
+  const movedFieldPlayerIds = getMovedFieldPlayerIds(slots);
+
   return `
     <div class="pitch" aria-label="Soccer field">
       ${renderFieldClock()}
@@ -663,8 +668,286 @@ function renderPitch() {
       <div class="pitch-line penalty bottom"></div>
       <div class="pitch-line goal top"></div>
       <div class="pitch-line goal bottom"></div>
-      ${getSlots().map(renderFieldSlot).join("")}
+      ${renderPendingMoveArrows()}
+      ${slots.map((slot) => renderFieldSlot(slot, movedFieldPlayerIds)).join("")}
+      ${renderStagedPlayerOverlays(slots)}
     </div>
+  `;
+}
+
+function getMovedFieldPlayerIds(slots = getSlots()) {
+  const livePlayerIds = new Set(slots.map((slot) => state.liveAssignments[slot.id]).filter(Boolean));
+  const movedPlayerIds = new Set();
+
+  for (const slot of slots) {
+    const livePlayerId = state.liveAssignments[slot.id] || null;
+    const stagedPlayerId = state.stagedAssignments[slot.id] || null;
+    if (stagedPlayerId && stagedPlayerId !== livePlayerId && livePlayerIds.has(stagedPlayerId)) {
+      movedPlayerIds.add(stagedPlayerId);
+    }
+  }
+
+  return movedPlayerIds;
+}
+
+function renderPendingMoveArrows() {
+  const arrows = getPendingMoveArrows();
+  if (!arrows.length) return "";
+
+  return `
+    <svg class="pitch-arrows" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <defs>
+        <marker id="move-arrow-head" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z"></path>
+        </marker>
+      </defs>
+      <g data-pitch-arrows></g>
+    </svg>
+  `;
+}
+
+function getPendingMoveArrows() {
+  const slots = getSlots();
+  const stagedSlotByPlayerId = new Map();
+  const arrows = [];
+
+  for (const slot of slots) {
+    const livePlayerId = state.liveAssignments[slot.id] || null;
+    const stagedPlayerId = state.stagedAssignments[slot.id] || null;
+    if (stagedPlayerId && stagedPlayerId !== livePlayerId) {
+      stagedSlotByPlayerId.set(stagedPlayerId, slot);
+    }
+  }
+
+  for (const slot of slots) {
+    const playerId = state.liveAssignments[slot.id] || null;
+    if (!playerId) continue;
+
+    const destinationSlot = stagedSlotByPlayerId.get(playerId);
+    if (!destinationSlot || destinationSlot.id === slot.id) continue;
+
+    arrows.push({
+      playerId,
+      fromSlotId: slot.id,
+      toSlotId: destinationSlot.id,
+    });
+  }
+
+  return arrows;
+}
+
+function renderPendingMoveArrow(from, to, bendSide = null) {
+  const path = curveArrowPath(from, to, bendSide);
+
+  return `
+    <path
+      class="pitch-move-arrow"
+      d="${path}"
+      marker-end="url(#move-arrow-head)"
+    ></path>
+  `;
+}
+
+function curveArrowPath(from, to, bendSide = null) {
+  const endpoints = trimArrowEndpoints(from, to);
+  const control = arrowControlPoint(endpoints, bendSide);
+
+  return [
+    "M",
+    formatArrowCoord(endpoints.x1),
+    formatArrowCoord(endpoints.y1),
+    "Q",
+    formatArrowCoord(control.x),
+    formatArrowCoord(control.y),
+    formatArrowCoord(endpoints.x2),
+    formatArrowCoord(endpoints.y2),
+  ].join(" ");
+}
+
+function trimArrowEndpoints(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (!length) return { x1: from.x, y1: from.y, x2: to.x, y2: to.y };
+
+  const trim = 18;
+  const trimX = (dx / length) * trim;
+  const trimY = (dy / length) * trim;
+
+  return {
+    x1: from.x + trimX,
+    y1: from.y + trimY,
+    x2: to.x - trimX,
+    y2: to.y - trimY,
+  };
+}
+
+function arrowControlPoint(endpoints, bendSide = null) {
+  const midX = (endpoints.x1 + endpoints.x2) / 2;
+  const midY = (endpoints.y1 + endpoints.y2) / 2;
+  const dx = endpoints.x2 - endpoints.x1;
+  const dy = endpoints.y2 - endpoints.y1;
+  const distance = Math.hypot(dx, dy);
+  if (!distance) return { x: midX, y: midY };
+
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+
+  if (absY > absX * 1.15) {
+    const bend = Math.min(46, Math.max(22, distance * 0.2));
+    const horizontalDirection = bendSide || (dy >= 0 ? -1 : 1);
+    return {
+      x: midX + horizontalDirection * bend,
+      y: midY,
+    };
+  }
+
+  const bend = Math.min(48, Math.max(20, distance * 0.18));
+  const verticalDirection = bendSide || horizontalArrowBendDirection(endpoints);
+
+  return {
+    x: midX,
+    y: midY + verticalDirection * bend,
+  };
+}
+
+function horizontalArrowBendDirection(endpoints) {
+  const dx = endpoints.x2 - endpoints.x1;
+  const dy = endpoints.y2 - endpoints.y1;
+  if (Math.abs(dy) <= Math.max(4, Math.abs(dx) * 0.12)) return dx >= 0 ? -1 : 1;
+  return endpoints.y1 > endpoints.y2 ? -1 : 1;
+}
+
+function formatArrowCoord(value) {
+  return Number(value).toFixed(2);
+}
+
+function updateSubstitutionLayer() {
+  const pitch = document.querySelector(".pitch");
+  if (!pitch) return;
+
+  positionStagedPlayerOverlays(pitch);
+  updatePitchMoveArrows(pitch);
+}
+
+function positionStagedPlayerOverlays(pitch) {
+  const pitchRect = pitch.getBoundingClientRect();
+
+  pitch.querySelectorAll(".staged-player-overlay[data-slot-id]").forEach((overlay) => {
+    const anchor = pitch.querySelector(dataSelector("data-slot-bubble-anchor", overlay.dataset.slotId));
+    if (!anchor) return;
+
+    const center = elementCenter(anchor, pitchRect);
+    overlay.style.left = `${formatArrowCoord(center.x + INCOMING_BUBBLE_OFFSET)}px`;
+    overlay.style.top = `${formatArrowCoord(center.y)}px`;
+  });
+}
+
+function updatePitchMoveArrows(pitch) {
+  const svg = pitch.querySelector(".pitch-arrows");
+  const arrowLayer = pitch.querySelector("[data-pitch-arrows]");
+  if (!svg || !arrowLayer) return;
+
+  const pitchRect = pitch.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${formatArrowCoord(pitchRect.width)} ${formatArrowCoord(pitchRect.height)}`);
+
+  const measuredArrows = getPendingMoveArrows()
+    .map((arrow) => {
+      const from = findPlayerBubble(pitch, "data-current-player-bubble", arrow.playerId);
+      const to = findPlayerBubble(pitch, "data-incoming-player-bubble", arrow.playerId);
+      if (!from || !to) return null;
+
+      return {
+        ...arrow,
+        from: elementCenter(from, pitchRect),
+        to: elementCenter(to, pitchRect),
+      };
+    })
+    .filter(Boolean);
+
+  arrowLayer.innerHTML = pairMoveArrowBends(measuredArrows)
+    .map((arrow) => renderPendingMoveArrow(arrow.from, arrow.to, arrow.bendSide))
+    .join("");
+}
+
+function pairMoveArrowBends(arrows) {
+  const groups = new Map();
+
+  for (const arrow of arrows) {
+    const key = moveArrowPairKey(arrow);
+    groups.set(key, [...(groups.get(key) || []), arrow]);
+  }
+
+  for (const group of groups.values()) {
+    if (!isReciprocalMoveArrowPair(group)) continue;
+    for (const arrow of group) {
+      arrow.bendSide = pairedMoveArrowBendDirection(arrow);
+    }
+  }
+
+  return arrows;
+}
+
+function moveArrowPairKey(arrow) {
+  return [arrow.fromSlotId, arrow.toSlotId].sort().join(":");
+}
+
+function isReciprocalMoveArrowPair(group) {
+  return (
+    group.length === 2 &&
+    group[0].fromSlotId === group[1].toSlotId &&
+    group[0].toSlotId === group[1].fromSlotId
+  );
+}
+
+function pairedMoveArrowBendDirection(arrow) {
+  const dx = arrow.to.x - arrow.from.x;
+  const dy = arrow.to.y - arrow.from.y;
+  return Math.abs(dy) > Math.abs(dx) * 1.15 ? (dy >= 0 ? -1 : 1) : dx >= 0 ? -1 : 1;
+}
+
+function findPlayerBubble(root, attribute, playerId) {
+  return root.querySelector(dataSelector(attribute, playerId));
+}
+
+function dataSelector(attribute, value) {
+  const escaped = window.CSS?.escape ? window.CSS.escape(String(value)) : String(value).replace(/"/g, '\\"');
+  return `[${attribute}="${escaped}"]`;
+}
+
+function elementCenter(element, containerRect) {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left - containerRect.left + rect.width / 2,
+    y: rect.top - containerRect.top + rect.height / 2,
+  };
+}
+
+function renderStagedPlayerOverlays(slots = getSlots()) {
+  const overlays = slots
+    .map((slot) => {
+      const livePlayerId = state.liveAssignments[slot.id] || null;
+      const stagedPlayerId = state.stagedAssignments[slot.id] || null;
+      const stagedPlayer = livePlayerId && stagedPlayerId !== livePlayerId ? getPlayer(stagedPlayerId) : null;
+      return stagedPlayer ? renderStagedPlayerOverlay(slot, stagedPlayer) : "";
+    })
+    .filter(Boolean)
+    .join("");
+
+  if (!overlays) return "";
+
+  return `<div class="substitution-bubble-layer" aria-hidden="true">${overlays}</div>`;
+}
+
+function renderStagedPlayerOverlay(slot, player) {
+  return `
+    <span
+      class="staged-player-overlay"
+      data-slot-id="${escapeHtml(slot.id)}"
+    >
+      <span class="bubble-sub-arrow">&larr;</span>
+      <span class="player-bubble incoming" data-incoming-player-bubble="${escapeHtml(player.id)}">${escapeHtml(initials(player.name))}</span>
+    </span>
   `;
 }
 
@@ -698,7 +981,7 @@ function renderFieldClock() {
   `;
 }
 
-function renderFieldSlot(slot) {
+function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
   const current = getPlayer(state.liveAssignments[slot.id]);
   const staged = getPlayer(state.stagedAssignments[slot.id]);
   const isChanged = (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
@@ -718,33 +1001,24 @@ function renderFieldSlot(slot) {
       aria-label="${escapeHtml(title)}"
     >
       <span class="position-label">${renderPositionCode(slot.label)}</span>
-      ${renderSlotBubble(current, staged)}
+      ${renderSlotBubble(slot, current, staged, movedFieldPlayerIds)}
       <span class="slot-name">${escapeHtml(slotName(current, staged))}</span>
     </button>
   `;
 }
 
-function renderSlotBubble(current, staged) {
+function renderSlotBubble(slot, current, staged, movedFieldPlayerIds = new Set()) {
   if (current && staged && current.id !== staged.id) {
-    return `
-      <span class="duo-bubbles">
-        <span class="player-bubble">${escapeHtml(initials(current.name))}</span>
-        <span class="player-bubble next">${escapeHtml(initials(staged.name))}</span>
-      </span>
-    `;
+    const outgoingClass = movedFieldPlayerIds.has(current.id) ? "" : " outgoing";
+    return `<span class="player-bubble${outgoingClass}" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
   }
 
   if (current && !staged) {
-    return `
-      <span class="duo-bubbles">
-        <span class="player-bubble">${escapeHtml(initials(current.name))}</span>
-        <span class="player-bubble empty">+</span>
-      </span>
-    `;
+    return `<span class="player-bubble outgoing" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
   }
 
-  if (staged) return `<span class="player-bubble next">${escapeHtml(initials(staged.name))}</span>`;
-  if (current) return `<span class="player-bubble">${escapeHtml(initials(current.name))}</span>`;
+  if (staged) return `<span class="player-bubble next" data-incoming-player-bubble="${escapeHtml(staged.id)}">${escapeHtml(initials(staged.name))}</span>`;
+  if (current) return `<span class="player-bubble" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
   return `<span class="player-bubble empty">+</span>`;
 }
 
@@ -1229,18 +1503,22 @@ document.addEventListener("visibilitychange", () => {
   } else {
     resumeRunningClock();
     updateDynamicDom();
+    updateSubstitutionLayer();
   }
 });
 document.addEventListener("freeze", persistRunningClock);
 document.addEventListener("resume", () => {
   resumeRunningClock();
   updateDynamicDom();
+  updateSubstitutionLayer();
 });
 window.addEventListener("pageshow", () => {
   resumeRunningClock();
   updateDynamicDom();
+  updateSubstitutionLayer();
 });
 window.addEventListener("pagehide", persistRunningClock);
+window.addEventListener("resize", updateSubstitutionLayer);
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {

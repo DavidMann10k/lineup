@@ -669,6 +669,27 @@ button:focus-visible {
   border-bottom: 0;
 }
 
+.pitch-arrows {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pitch-arrows marker path {
+  fill: var(--blue);
+}
+
+.pitch-move-arrow {
+  fill: none;
+  marker-end: url("#move-arrow-head");
+  stroke: var(--blue);
+  stroke-linecap: round;
+  stroke-width: 2.6;
+  vector-effect: non-scaling-stroke;
+}
+
 .field-slot {
   position: absolute;
   z-index: 4;
@@ -748,22 +769,54 @@ button:focus-visible {
   opacity: 0.82;
 }
 
-.duo-bubbles {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.substitution-bubble-layer {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  pointer-events: none;
 }
 
-.duo-bubbles .player-bubble {
+.staged-player-overlay {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+}
+
+.staged-player-overlay .player-bubble {
   width: 34px;
   height: 34px;
   font-size: 0.7rem;
 }
 
-.duo-bubbles .player-bubble.next {
-  margin-left: -10px;
+.player-bubble.next,
+.staged-player-overlay .player-bubble.incoming {
   background: var(--slot-color, var(--blue));
-  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.86);
+}
+
+.bubble-sub-arrow {
+  position: absolute;
+  top: 50%;
+  right: calc(100% - 3px);
+  display: grid;
+  width: 13px;
+  color: var(--blue);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  place-items: center;
+  transform: translateY(-50%);
+}
+
+.staged-player-overlay .player-bubble.incoming {
+  border-color: var(--blue);
+}
+
+.field-slot.changed .player-bubble.outgoing {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px rgba(207, 73, 63, 0.72);
 }
 
 .bench-strip {
