@@ -276,6 +276,7 @@ button {
   width: min(1580px, 100%);
   margin: 0 auto;
   padding: clamp(14px, 2vw, 28px);
+  touch-action: pan-y;
 }
 
 .app-footer {

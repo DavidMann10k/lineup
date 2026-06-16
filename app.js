@@ -9,6 +9,7 @@ let lastSaveAt = 0;
 let pendingFocusSelector = null;
 let detailPlayerId = null;
 let activeChipDrag = null;
+let activePageSwipe = null;
 let suppressNextChipClick = false;
 
 function createState() {
@@ -866,6 +867,7 @@ function render() {
     </div>
   `;
   wireDragAndDrop();
+  wirePageSwipe();
   updateDynamicDom();
   restorePendingFocus();
 }
@@ -1527,6 +1529,73 @@ function wireDragAndDrop() {
   document.querySelectorAll("[data-player-chip]").forEach((chip) => {
     chip.addEventListener("pointerdown", startChipPointerDrag);
   });
+}
+
+function wirePageSwipe() {
+  const content = document.querySelector(".content");
+  content?.addEventListener("pointerdown", startPageSwipe);
+}
+
+function isSwipeIgnoredTarget(target) {
+  if (!(target instanceof Element)) return true;
+  return Boolean(
+    target.closest(
+      'a, button, input, select, textarea, label, [data-player-chip], [data-slot-drop], [data-bench-drop], .player-modal, .modal-backdrop',
+    ),
+  );
+}
+
+function startPageSwipe(event) {
+  if (event.pointerType !== "touch" || activeChipDrag || detailPlayerId || isSwipeIgnoredTarget(event.target)) return;
+
+  const edgeGuard = 24;
+  if (event.clientX <= edgeGuard || event.clientX >= window.innerWidth - edgeGuard) return;
+
+  activePageSwipe = {
+    pointerId: event.pointerId,
+    source: event.currentTarget,
+    startX: event.clientX,
+    startY: event.clientY,
+  };
+
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  event.currentTarget.addEventListener("pointerup", endPageSwipe);
+  event.currentTarget.addEventListener("pointercancel", cancelPageSwipe);
+}
+
+function endPageSwipe(event) {
+  if (!activePageSwipe || activePageSwipe.pointerId !== event.pointerId) return;
+
+  const swipe = activePageSwipe;
+  const dx = event.clientX - swipe.startX;
+  const dy = event.clientY - swipe.startY;
+  cleanupPageSwipe(event.pointerId);
+
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  if (absX < 70 || absX < absY * 1.45) return;
+
+  const nextView = dx < 0 ? "formation" : "roster";
+  if (state.view === nextView) return;
+
+  state.view = nextView;
+  saveState();
+  render();
+}
+
+function cancelPageSwipe(event) {
+  if (!activePageSwipe || activePageSwipe.pointerId !== event.pointerId) return;
+  cleanupPageSwipe(event.pointerId);
+}
+
+function cleanupPageSwipe(pointerId) {
+  const swipe = activePageSwipe;
+  if (!swipe) return;
+
+  swipe.source.releasePointerCapture?.(pointerId);
+  swipe.source.removeEventListener("pointerup", endPageSwipe);
+  swipe.source.removeEventListener("pointercancel", cancelPageSwipe);
+  activePageSwipe = null;
 }
 
 function startChipPointerDrag(event) {
