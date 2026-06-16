@@ -5,7 +5,6 @@ const app = document.getElementById("app");
 const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 let state = loadState();
-let lastSaveAt = 0;
 let pendingFocusSelector = null;
 let detailPlayerId = null;
 let activeChipDrag = null;
@@ -54,7 +53,7 @@ function loadState() {
     return {
       ...base,
       ...saved,
-      clock: { ...base.clock, ...(saved.clock || {}), running: false, lastTickAt: null },
+      clock: normalizeClock({ ...base.clock, ...(saved.clock || {}) }),
       rosterSort,
       rosterSortDirection,
       rosterSortDefaultVersion: base.rosterSortDefaultVersion,
@@ -71,6 +70,18 @@ function loadState() {
 
 function normalizeRosterSort(value, fallback = "playtime") {
   return value === "playtime" || value === "active" || value === "name" ? value : fallback;
+}
+
+function normalizeClock(clock) {
+  const lastTickAt = Number(clock.lastTickAt || 0);
+  const period = Number(clock.period || 1);
+
+  return {
+    running: Boolean(clock.running),
+    elapsedSeconds: Math.max(0, Number(clock.elapsedSeconds || 0)),
+    period: Number.isFinite(period) && period >= 1 ? Math.floor(period) : 1,
+    lastTickAt: Number.isFinite(lastTickAt) && lastTickAt > 0 ? lastTickAt : null,
+  };
 }
 
 function defaultRosterSortDirection(sortKey) {
@@ -97,11 +108,6 @@ function normalizePlayer(player) {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  lastSaveAt = Date.now();
-}
-
-function saveSoon() {
-  if (Date.now() - lastSaveAt > 3500) saveState();
 }
 
 function uid(prefix) {
@@ -323,6 +329,7 @@ function accrueTime() {
 
   const now = Date.now();
   if (!state.clock.lastTickAt) state.clock.lastTickAt = now;
+  if (state.clock.lastTickAt > now) state.clock.lastTickAt = now;
 
   const delta = Math.max(0, (now - state.clock.lastTickAt) / 1000);
   if (delta < 0.05) return;
@@ -344,6 +351,21 @@ function accrueTime() {
     if (!player.active || livePlayerIds.has(player.id)) continue;
     player.benchSeconds = Number(player.benchSeconds || 0) + delta;
   }
+}
+
+function resumeRunningClock() {
+  if (!state.clock.running) return;
+
+  ensureAssignmentKeys();
+  if (!state.clock.lastTickAt) state.clock.lastTickAt = Date.now();
+  accrueTime();
+  saveState();
+}
+
+function persistRunningClock() {
+  if (!state.clock.running) return;
+  accrueTime();
+  saveState();
 }
 
 function toggleClock() {
@@ -1923,8 +1945,27 @@ setInterval(() => {
   if (!state.clock.running) return;
   accrueTime();
   updateDynamicDom();
-  saveSoon();
+  saveState();
 }, 1000);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    persistRunningClock();
+  } else {
+    resumeRunningClock();
+    updateDynamicDom();
+  }
+});
+document.addEventListener("freeze", persistRunningClock);
+document.addEventListener("resume", () => {
+  resumeRunningClock();
+  updateDynamicDom();
+});
+window.addEventListener("pageshow", () => {
+  resumeRunningClock();
+  updateDynamicDom();
+});
+window.addEventListener("pagehide", persistRunningClock);
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {
@@ -1932,4 +1973,5 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
   });
 }
 
+resumeRunningClock();
 render();
