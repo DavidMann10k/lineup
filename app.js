@@ -105,45 +105,78 @@ function normalizeFormation(value) {
   const cleaned = String(value || "")
     .trim()
     .replace(/\s+/g, "");
+  const parts = cleaned.split("-");
+  let hasGoalie = false;
+  const rowParts = [];
 
-  if (!/^\d{1,2}(?:-\d{1,2})*$/.test(cleaned)) {
-    return { error: "Use soccer notation like 2-3-1 or 4-3-3." };
+  if (!cleaned || parts.some((part) => !part)) {
+    return { error: "Use soccer notation like G-2-3-1, 2-3-1, or 4-3-3." };
   }
 
-  const rows = cleaned.split("-").map((part) => Number(part));
+  for (const part of parts) {
+    if (/^g$/i.test(part)) {
+      if (hasGoalie) return { error: "Use only one goalie marker." };
+      hasGoalie = true;
+      continue;
+    }
+
+    if (!/^\d{1,2}$/.test(part)) {
+      return { error: "Use soccer notation like G-2-3-1, 2-3-1, or 4-3-3." };
+    }
+
+    rowParts.push(part);
+  }
+
+  if (!rowParts.length) {
+    return { error: "Add at least one formation line." };
+  }
+
+  const rows = rowParts.map((part) => Number(part));
   const total = rows.reduce((sum, count) => sum + count, 0);
 
   if (rows.some((count) => !Number.isInteger(count) || count < 1 || count > 6)) {
     return { error: "Each formation line needs 1 to 6 players." };
   }
 
-  if (total > 10) {
-    return { error: "Use 10 or fewer outfield spots. The keeper is added automatically." };
+  const maxOutfield = hasGoalie ? 10 : 11;
+  if (total > maxOutfield) {
+    return { error: "Use 10 or fewer outfield spots with G, or 11 or fewer without G." };
   }
 
-  return { value: cleaned, rows };
+  return { value: `${hasGoalie ? "G-" : ""}${rowParts.join("-")}`, rows, hasGoalie };
 }
 
 function parseFormation() {
-  return normalizeFormation(state.formation).rows || [2, 3, 1];
+  const result = normalizeFormation(state.formation);
+  if (result.error) return { rows: [2, 3, 1], hasGoalie: false };
+  return result;
 }
 
 function getSlots() {
-  const rows = parseFormation();
-  const slots = [
-    {
+  const formation = parseFormation();
+  const rows = formation.rows;
+  const slots = [];
+
+  if (formation.hasGoalie) {
+    slots.push({
       id: "slot-gk",
       label: "GK",
       role: "Goalkeeper",
       x: 50,
       y: 91,
-    },
-  ];
+    });
+  }
+
   const rowCount = rows.length;
   let outfieldIndex = 1;
 
   rows.forEach((count, rowIndex) => {
-    const y = rowCount === 1 ? 52 : 72 - 48 * (rowIndex / Math.max(1, rowCount - 1));
+    const topY = 23;
+    const bottomY = formation.hasGoalie ? 74 : 84;
+    const y =
+      rowCount === 1
+        ? 52
+        : bottomY - (bottomY - topY) * (rowIndex / Math.max(1, rowCount - 1));
     const prefix = rowIndex === 0 ? "D" : rowIndex === rowCount - 1 ? "F" : "M";
     const role = prefix === "D" ? "Defense" : prefix === "F" ? "Forward" : "Midfield";
     const labels = labelsForLine(prefix, count);
@@ -201,34 +234,53 @@ function ensureAssignmentKeys() {
   const validIds = new Set(getSlots().map((slot) => slot.id));
   const livePlayerIds = new Set();
   const stagedPlayerIds = new Set();
+  let changed = false;
 
   for (const key of Object.keys(state.liveAssignments)) {
-    if (!validIds.has(key)) delete state.liveAssignments[key];
+    if (!validIds.has(key)) {
+      delete state.liveAssignments[key];
+      changed = true;
+    }
   }
 
   for (const key of Object.keys(state.stagedAssignments)) {
-    if (!validIds.has(key)) delete state.stagedAssignments[key];
+    if (!validIds.has(key)) {
+      delete state.stagedAssignments[key];
+      changed = true;
+    }
+  }
+
+  for (const key of Object.keys(state.openStints)) {
+    if (!validIds.has(key)) {
+      delete state.openStints[key];
+      changed = true;
+    }
   }
 
   for (const slotId of validIds) {
     const livePlayerId = state.liveAssignments[slotId];
     if (livePlayerId && (!getPlayer(livePlayerId) || livePlayerIds.has(livePlayerId))) {
       state.liveAssignments[slotId] = null;
+      changed = true;
     } else if (livePlayerId) {
       livePlayerIds.add(livePlayerId);
     }
 
     if (!Object.prototype.hasOwnProperty.call(state.stagedAssignments, slotId)) {
       state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
+      changed = true;
     }
 
     const stagedPlayerId = state.stagedAssignments[slotId];
     if (stagedPlayerId && (!getPlayer(stagedPlayerId) || stagedPlayerIds.has(stagedPlayerId))) {
       state.stagedAssignments[slotId] = null;
+      changed = true;
     } else if (stagedPlayerId) {
       stagedPlayerIds.add(stagedPlayerId);
     }
   }
+
+  return changed;
 }
 
 function remapAssignmentsByPosition(previousSlots, nextSlots, assignments) {
@@ -284,6 +336,7 @@ function accrueTime() {
 }
 
 function toggleClock() {
+  ensureAssignmentKeys();
   if (state.clock.running) {
     accrueTime();
     state.clock.running = false;
@@ -298,6 +351,7 @@ function toggleClock() {
 }
 
 function nextPeriod() {
+  ensureAssignmentKeys();
   if (!hasCompleteLiveLineup()) return;
   accrueTime();
   state.clock.running = false;
@@ -558,16 +612,6 @@ function keepSwap(slotId, pairSlotId) {
   render();
 }
 
-function resetStagedLineup() {
-  accrueTime();
-  ensureAssignmentKeys();
-  for (const slot of getSlots()) {
-    state.stagedAssignments[slot.id] = state.liveAssignments[slot.id] || null;
-  }
-  saveState();
-  render();
-}
-
 function setRosterSort(sortKey) {
   const nextSort = normalizeRosterSort(sortKey);
   if (state.rosterSort === nextSort) {
@@ -689,6 +733,11 @@ function getLivePlayerIds() {
   return getVisibleAssignmentPlayerIds(state.liveAssignments);
 }
 
+function isPlayerPlaytimeIncreasing(player) {
+  if (!state.clock.running || !player) return false;
+  return getLivePlayerIds().has(player.id);
+}
+
 function getStagedPlayerIds() {
   return getVisibleAssignmentPlayerIds(state.stagedAssignments);
 }
@@ -731,17 +780,12 @@ function getRosterPlayers() {
   return [...state.players].sort(compareRosterPlayers);
 }
 
-function getChangedSlots() {
-  return getSlots().filter((slot) => {
-    return (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
-  });
-}
-
 function isClockAtZero() {
   return Number(state.clock.elapsedSeconds || 0) <= 0;
 }
 
 function isAssignmentFormationFilled(assignments) {
+  ensureAssignmentKeys();
   const usedPlayerIds = new Set();
 
   return getSlots().every((slot) => {
@@ -846,6 +890,11 @@ function initials(name) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
+function rosterBadgeText(player) {
+  const number = String(player.number || "").trim();
+  return number || initials(player.name);
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -856,7 +905,7 @@ function escapeHtml(value) {
 }
 
 function render() {
-  ensureAssignmentKeys();
+  if (ensureAssignmentKeys()) saveState();
   const viewTransitionClass = pendingViewTransition ? `view-transition view-swipe-${pendingViewTransition}` : "";
   pendingViewTransition = null;
 
@@ -940,44 +989,14 @@ function renderIcon(name) {
 }
 
 function renderHeader() {
-  const startingLineupSet = hasCompleteLiveLineup();
-  const startDisabled = !state.clock.running && !startingLineupSet;
-  const nextPeriodDisabled = !startingLineupSet;
-  const resetClockHidden = isClockAtZero();
-  const clockState = `P${state.clock.period} ${state.clock.running ? "running" : "paused"}`;
-  const playLabel = startDisabled ? "Set starting lineup before starting clock" : state.clock.running ? "Pause clock" : "Start clock";
-
   return `
     <header class="app-header">
-      <div class="brand">
-        <div class="brand-mark">L</div>
-        <div>
-          <h1>Lineup</h1>
-          <p>Roster, formation, and live playtime</p>
-        </div>
-      </div>
-
-      <nav class="view-tabs" aria-label="Screens">
-        <button class="tab-button ${state.view === "roster" ? "active" : ""}" data-action="set-view" data-view="roster">Roster</button>
-        <button class="tab-button ${state.view === "formation" ? "active" : ""}" data-action="set-view" data-view="formation">Formation</button>
-      </nav>
-
-      <div class="clock-strip">
-        <div class="clock-readout">
-          <span data-clock-state>${clockState}</span>
-          <strong data-clock-time>${formatDuration(state.clock.elapsedSeconds)}</strong>
-        </div>
-        <div class="clock-controls" aria-label="Clock controls">
-          <button class="clock-icon-button ${state.clock.running ? "pause" : "play"}" data-action="toggle-clock" aria-label="${playLabel}" title="${playLabel}" ${startDisabled ? "disabled" : ""}>
-            ${renderIcon(state.clock.running ? "pause" : "play")}
-          </button>
-          <button class="clock-icon-button" data-action="next-period" aria-label="Next period" title="Next period" ${nextPeriodDisabled ? "disabled" : ""}>
-            ${renderIcon("next")}
-          </button>
-          <button class="clock-icon-button" data-action="reset-clock" data-reset-clock aria-label="Reset clock" title="Reset clock" ${resetClockHidden ? "hidden" : ""}>
-            ${renderIcon("refresh")}
-          </button>
-        </div>
+      <div class="header-primary">
+        <img class="brand-mark" src="./assets/icon.svg" alt="">
+        <nav class="view-tabs" aria-label="Screens">
+          <button class="tab-button ${state.view === "roster" ? "active" : ""}" data-action="set-view" data-view="roster">Roster</button>
+          <button class="tab-button ${state.view === "formation" ? "active" : ""}" data-action="set-view" data-view="formation">Formation</button>
+        </nav>
       </div>
     </header>
   `;
@@ -1070,14 +1089,14 @@ function renderRosterSortHeader(label, sortKey) {
 }
 
 function renderRosterRow(player) {
+  const playtimeIncreasing = isPlayerPlaytimeIncreasing(player);
   return `
     <tr>
       <td>
         <div class="player-name-cell">
-          <span class="mini-bubble">${escapeHtml(initials(player.name))}</span>
+          <span class="mini-bubble roster-badge">${escapeHtml(rosterBadgeText(player))}</span>
           <div>
             <a class="player-name-link" href="#player-${player.id}" data-action="open-player-details" data-player-id="${player.id}">${escapeHtml(player.name)}</a>
-            <span>${player.number ? `#${escapeHtml(player.number)}` : "No number"}</span>
           </div>
         </div>
       </td>
@@ -1087,7 +1106,12 @@ function renderRosterRow(player) {
           <span aria-hidden="true"></span>
         </label>
       </td>
-      <td data-player-total="${player.id}">${renderTimeCode(player.totalSeconds)}</td>
+      <td
+        class="playtime-cell ${playtimeIncreasing ? "increasing" : "idle"}"
+        data-player-total="${player.id}"
+        data-playtime-indicator="true"
+        aria-label="${escapeHtml(player.name)} playtime ${playtimeIncreasing ? "increasing" : "not increasing"}"
+      >${renderTimeCode(player.totalSeconds)}</td>
       <td>
         <div class="usage-list" data-player-usage="${player.id}">${renderUsageReadout(player)}</div>
       </td>
@@ -1156,7 +1180,7 @@ function renderPlayerModal() {
             <span class="mini-bubble">${escapeHtml(initials(player.name))}</span>
             <div>
               <h2 id="player-modal-title">${escapeHtml(player.name)}</h2>
-              <span>${player.number ? `#${escapeHtml(player.number)}` : "No number"}</span>
+              ${player.number ? `<span>#${escapeHtml(player.number)}</span>` : ""}
             </div>
           </div>
           <button class="modal-close" data-action="close-player-details" aria-label="Close player details">
@@ -1198,7 +1222,6 @@ function renderPlayerModal() {
 }
 
 function renderFormation() {
-  const changedSlots = getChangedSlots();
   const startingLineupSet = hasCompleteLiveLineup();
 
   return `
@@ -1209,7 +1232,7 @@ function renderFormation() {
             ${renderPitch()}
           </section>
           ${startingLineupSet ? "" : renderStartingLineupPrompt()}
-          ${renderBench(changedSlots.length)}
+          ${renderBench()}
           ${renderSubsPanel()}
           ${renderFormationEditor()}
         </div>
@@ -1302,6 +1325,7 @@ function renderFormationEditor() {
 function renderPitch() {
   return `
     <div class="pitch" aria-label="Soccer field">
+      ${renderFieldClock()}
       <div class="pitch-line half"></div>
       <div class="pitch-line center-circle"></div>
       <div class="pitch-line center-dot"></div>
@@ -1310,6 +1334,36 @@ function renderPitch() {
       <div class="pitch-line goal top"></div>
       <div class="pitch-line goal bottom"></div>
       ${getSlots().map(renderFieldSlot).join("")}
+    </div>
+  `;
+}
+
+function renderFieldClock() {
+  const startingLineupSet = hasCompleteLiveLineup();
+  const startDisabled = !state.clock.running && !startingLineupSet;
+  const nextPeriodDisabled = !startingLineupSet;
+  const playLabel = startDisabled ? "Set starting lineup before starting clock" : state.clock.running ? "Pause clock" : "Start clock";
+  const clockStatus = state.clock.running ? "running" : "paused";
+
+  return `
+    <div class="field-clock">
+      <div class="field-clock-group">
+        <button class="clock-icon-button ${state.clock.running ? "pause" : "play"}" data-action="toggle-clock" aria-label="${playLabel}" title="${playLabel}" ${startDisabled ? "disabled" : ""}>
+          ${renderIcon(state.clock.running ? "pause" : "play")}
+        </button>
+        <div class="clock-readout field-clock-readout ${clockStatus}" aria-label="${clockStatus === "running" ? "Clock running" : "Clock paused"}">
+          <strong data-clock-time>${formatDuration(state.clock.elapsedSeconds)}</strong>
+        </div>
+      </div>
+      <div class="field-clock-group" aria-label="Period controls">
+        <div class="field-clock-period" aria-label="Period ${state.clock.period}">
+          <span>Period</span>
+          <strong data-clock-period>${state.clock.period}</strong>
+        </div>
+        <button class="clock-icon-button" data-action="next-period" aria-label="Next period" title="Next period" ${nextPeriodDisabled ? "disabled" : ""}>
+          ${renderIcon("next")}
+        </button>
+      </div>
     </div>
   `;
 }
@@ -1372,7 +1426,7 @@ function slotName(current, staged) {
   return "Open";
 }
 
-function renderBench(pendingCount) {
+function renderBench() {
   const benchPlayers = getBenchPlayers();
   const inactivePlayers = getInactivePlayers();
   const canSetLineup = isStagedFormationFilled();
@@ -1387,10 +1441,6 @@ function renderBench(pendingCount) {
           <button class="button green bench-action" data-action="snapshot" ${canSetLineup ? "" : "disabled"} title="${canSetLineup ? "Set lineup" : "Fill every position before setting lineup"}">
             ${renderIcon("swapVertical")}
             <span>Set Lineup</span>
-          </button>
-          <button class="button secondary bench-action" data-action="reset-staged" ${pendingCount ? "" : "disabled"}>
-            ${renderIcon("cancel")}
-            <span>Clear</span>
           </button>
         </div>
       </div>
@@ -1513,15 +1563,25 @@ function updateDynamicDom() {
   document.querySelectorAll("[data-clock-time]").forEach((node) => {
     node.textContent = formatDuration(state.clock.elapsedSeconds);
   });
-  document.querySelectorAll("[data-clock-state]").forEach((node) => {
-    node.textContent = `P${state.clock.period} ${state.clock.running ? "running" : "paused"}`;
+  document.querySelectorAll("[data-clock-period]").forEach((node) => {
+    node.textContent = state.clock.period;
   });
   document.querySelectorAll("[data-reset-clock]").forEach((node) => {
     node.hidden = isClockAtZero();
   });
   document.querySelectorAll("[data-player-total]").forEach((node) => {
     const player = getPlayer(node.dataset.playerTotal);
-    if (player) node.innerHTML = renderTimeCode(player.totalSeconds);
+    if (!player) return;
+    node.innerHTML = renderTimeCode(player.totalSeconds);
+    if (node.dataset.playtimeIndicator === "true") {
+      const increasing = isPlayerPlaytimeIncreasing(player);
+      node.classList.toggle("increasing", increasing);
+      node.classList.toggle("idle", !increasing);
+      node.setAttribute(
+        "aria-label",
+        `${player.name} playtime ${increasing ? "increasing" : "not increasing"}`,
+      );
+    }
   });
   document.querySelectorAll("[data-player-usage]").forEach((node) => {
     const player = getPlayer(node.dataset.playerUsage);
@@ -1761,7 +1821,6 @@ document.addEventListener("click", (event) => {
   if (action === "reset-clock") resetClock();
   if (action === "reset-new-game") resetForNewGame();
   if (action === "snapshot") commitSnapshot();
-  if (action === "reset-staged") resetStagedLineup();
   if (action === "remove-player") removePlayer(target.dataset.playerId);
   if (action === "open-player-details") {
     event.preventDefault();

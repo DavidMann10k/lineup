@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --page-gap: 8px;
+  --page-pad: 8px;
   --bg: #f7f8fb;
   --surface: #ffffff;
   --surface-2: #eef2f5;
@@ -48,70 +50,54 @@ button {
 }
 
 .app-shell {
+  display: grid;
+  width: min(1580px, 100%);
   min-height: 100vh;
+  margin: 0 auto;
+  padding: var(--page-pad);
+  gap: var(--page-gap);
 }
 
 .app-header {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto minmax(300px, 1fr);
-  gap: 16px;
+  --header-control-height: 44px;
+  display: flex;
   align-items: center;
-  padding: 14px clamp(14px, 3vw, 32px);
-  border-bottom: 1px solid var(--line);
-  background: rgba(247, 248, 251, 0.94);
-  backdrop-filter: blur(12px);
+  background: var(--bg);
 }
 
-.brand {
+.header-primary {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
-  gap: 12px;
+  gap: var(--page-gap);
 }
 
 .brand-mark {
-  display: grid;
-  width: 38px;
-  height: 38px;
+  width: var(--header-control-height);
+  height: var(--header-control-height);
   flex: 0 0 auto;
-  place-items: center;
   border-radius: 8px;
-  background: var(--green);
-  color: #fff;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.brand h1 {
-  margin: 0;
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
-.brand p {
-  margin: 3px 0 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
+  object-fit: contain;
 }
 
 .view-tabs {
   display: flex;
-  justify-self: center;
-  padding: 4px;
+  flex: 1 1 auto;
+  height: var(--header-control-height);
+  min-width: 0;
+  padding: 3px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
 }
 
 .tab-button {
+  flex: 1 1 0;
   min-width: 104px;
-  padding: 8px 14px;
+  min-height: 0;
+  padding: 0 14px;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
@@ -124,49 +110,29 @@ button {
   color: #fff;
 }
 
-.clock-strip {
-  display: flex;
-  min-width: 0;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 6px;
-}
-
 .clock-readout {
   display: grid;
-  min-width: 104px;
-  min-height: 42px;
-  padding: 5px 9px;
+  min-width: 112px;
+  min-height: 40px;
+  padding: 2px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
-  text-align: right;
-}
-
-.clock-readout span {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  place-items: center;
+  text-align: center;
 }
 
 .clock-readout strong {
   font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 1.22rem;
-  line-height: 1.05;
+  font-size: 1.55rem;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
-}
-
-.clock-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
 }
 
 .clock-icon-button {
   display: inline-grid;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -273,9 +239,7 @@ button {
 }
 
 .content {
-  width: min(1580px, 100%);
-  margin: 0 auto;
-  padding: clamp(14px, 2vw, 28px);
+  min-width: 0;
   touch-action: pan-y;
 }
 
@@ -433,7 +397,7 @@ button {
 
 .formation-screen {
   display: grid;
-  gap: 16px;
+  gap: 10px;
 }
 
 .formation-editor,
@@ -450,7 +414,8 @@ button {
 }
 
 .formation-editor {
-  margin-top: 14px;
+  margin-top: 8px;
+  padding: 10px;
 }
 
 .formation-form {
@@ -523,7 +488,7 @@ button:focus-visible {
 .formation-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
-  gap: 16px;
+  gap: 12px;
   align-items: start;
 }
 
@@ -541,7 +506,7 @@ button:focus-visible {
 }
 
 .field-zone {
-  padding: clamp(10px, 1.4vw, 18px);
+  padding: clamp(6px, 1vw, 12px);
 }
 
 .pitch {
@@ -549,13 +514,95 @@ button:focus-visible {
   width: min(560px, 38vw, 100%);
   margin: 0 auto;
   overflow: hidden;
-  aspect-ratio: 7 / 10;
+  aspect-ratio: 19 / 20;
   border: 3px solid var(--field-line);
   border-radius: 8px;
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.06) 50%, transparent 50%) 0 0 /
       80px 100%,
     linear-gradient(180deg, var(--field), var(--field-dark));
+}
+
+.field-clock {
+  --field-clock-height: 40px;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  z-index: 8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.field-clock-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.field-clock-readout,
+.field-clock-period,
+.field-clock .clock-icon-button {
+  border-color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(23, 33, 43, 0.58),
+    0 2px 10px rgba(23, 33, 43, 0.2);
+}
+
+.field-clock-readout {
+  min-height: var(--field-clock-height);
+  border-width: 2px;
+}
+
+.field-clock-readout.paused {
+  border-color: var(--red);
+}
+
+.field-clock-readout.running {
+  border-color: var(--green);
+}
+
+.field-clock-period {
+  display: grid;
+  min-width: 52px;
+  height: var(--field-clock-height);
+  padding: 4px 8px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  color: var(--ink);
+  line-height: 1;
+  text-align: center;
+}
+
+.field-clock-period span {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.field-clock-period strong {
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.field-clock .clock-icon-button {
+  width: var(--field-clock-height);
+  height: var(--field-clock-height);
+}
+
+.field-clock .clock-icon-button.play {
+  color: var(--green-dark);
+}
+
+.field-clock .clock-icon-button.pause {
+  color: var(--red);
 }
 
 .pitch::after {
@@ -731,15 +778,15 @@ button:focus-visible {
 }
 
 .bench-strip {
-  margin-top: 14px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 10px;
 }
 
 .lineup-start-message {
   display: grid;
   gap: 4px;
-  margin-top: 14px;
-  padding: 10px 12px;
+  margin-top: 8px;
+  padding: 8px 10px;
   border: 1px solid rgba(217, 154, 33, 0.58);
   border-radius: 8px;
   background: #fff9ec;
@@ -765,8 +812,8 @@ button:focus-visible {
 .subs-panel {
   display: grid;
   gap: 10px;
-  margin-top: 14px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 10px;
 }
 
 .bench-head,
@@ -777,7 +824,7 @@ button:focus-visible {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .subs-head {
@@ -1190,6 +1237,30 @@ td {
   font-size: 0.92rem;
 }
 
+.playtime-cell .time-code {
+  min-width: 7ch;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 800;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.playtime-cell.increasing .time-code {
+  border-color: rgba(40, 120, 79, 0.34);
+  background: #e7f5ee;
+  color: var(--green-dark);
+}
+
+.playtime-cell.idle .time-code {
+  border-color: rgba(100, 116, 139, 0.18);
+  background: #f4f6f8;
+  color: var(--muted);
+}
+
 tr:last-child td {
   border-bottom: 0;
 }
@@ -1201,14 +1272,27 @@ tr:last-child td {
   gap: 10px;
 }
 
-.player-name-link,
-.player-name-cell span {
+.player-name-link {
   display: block;
+}
+
+.roster-badge {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  padding: 0;
+  font-size: 0.76rem;
+  line-height: 1;
+  text-align: center;
 }
 
 .player-name-link {
   color: var(--ink);
+  font-size: 1.02rem;
   font-weight: 800;
+  line-height: 1.45;
   text-decoration-color: rgba(47, 104, 214, 0.45);
   text-underline-offset: 3px;
 }
@@ -1217,7 +1301,7 @@ tr:last-child td {
   color: var(--blue);
 }
 
-.player-name-cell span {
+.player-name-meta {
   color: var(--muted);
   font-size: 0.78rem;
 }
@@ -1485,17 +1569,8 @@ tr:last-child td {
 }
 
 @media (max-width: 1120px) {
-  .app-header {
-    grid-template-columns: 1fr;
-  }
-
-  .view-tabs,
-  .clock-strip {
-    justify-self: stretch;
-  }
-
-  .clock-strip {
-    justify-content: space-between;
+  .view-tabs {
+    flex: 1 1 auto;
   }
 
   .formation-grid {
@@ -1512,10 +1587,6 @@ tr:last-child td {
 }
 
 @media (max-width: 720px) {
-  .content {
-    padding: 10px;
-  }
-
   .formation-editor,
   .roster-toolbar {
     align-items: stretch;
@@ -1531,24 +1602,18 @@ tr:last-child td {
     min-width: 0;
   }
 
-  .clock-readout {
-    text-align: left;
+  .field-clock {
+    top: 8px;
+    right: 8px;
+    left: 8px;
   }
 
-  .clock-strip {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+  .field-clock {
+    --field-clock-height: 38px;
   }
 
-  .clock-controls {
-    flex: 0 0 auto;
-  }
-
-  .clock-icon-button {
-    width: 44px;
-    height: 44px;
+  .field-clock-readout {
+    min-width: 96px;
   }
 
   .toolbar-actions,
@@ -1614,9 +1679,9 @@ tr:last-child td {
   }
 
   .bench-action {
-    width: 44px;
+    width: auto;
     min-height: 44px;
-    padding: 0;
+    padding: 0 12px;
   }
 
   .bench-action .icon {
@@ -1625,7 +1690,7 @@ tr:last-child td {
   }
 
   .bench-action span {
-    display: none;
+    display: inline;
   }
 
   .stat-grid {
