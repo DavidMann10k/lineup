@@ -470,6 +470,29 @@ function stagePlayerInSlot(playerId, slotId) {
   render();
 }
 
+function stageFieldPlayerInSlot(playerId, sourceSlotId, targetSlotId) {
+  accrueTime();
+  ensureAssignmentKeys();
+  const player = getPlayer(playerId);
+  if (!player || !player.active) return;
+  if (!sourceSlotId || sourceSlotId === targetSlotId) return;
+
+  const displacedPlayerId = state.stagedAssignments[targetSlotId] || state.liveAssignments[targetSlotId] || null;
+
+  for (const key of Object.keys(state.stagedAssignments)) {
+    if (state.stagedAssignments[key] === playerId) state.stagedAssignments[key] = null;
+    if (displacedPlayerId && state.stagedAssignments[key] === displacedPlayerId) state.stagedAssignments[key] = null;
+  }
+
+  state.stagedAssignments[targetSlotId] = playerId;
+  if (Object.prototype.hasOwnProperty.call(state.stagedAssignments, sourceSlotId)) {
+    state.stagedAssignments[sourceSlotId] = displacedPlayerId && displacedPlayerId !== playerId ? displacedPlayerId : null;
+  }
+  state.selectedPlayerId = playerId;
+  saveState();
+  render();
+}
+
 function setSlotStage(slotId, playerId) {
   accrueTime();
   ensureAssignmentKeys();
@@ -484,7 +507,7 @@ function setSlotStage(slotId, playerId) {
   stagePlayerInSlot(playerId, slotId);
 }
 
-function stageSlotToBench(slotId) {
+function stageSlotToBench(slotId, draggedPlayerId = null) {
   accrueTime();
   ensureAssignmentKeys();
 
@@ -492,6 +515,17 @@ function stageSlotToBench(slotId) {
   const livePlayerId = state.liveAssignments[slotId] || null;
   const stagedPlayerId = state.stagedAssignments[slotId] || null;
   if (!livePlayerId && !stagedPlayerId) return;
+
+  const draggedDestination = draggedPlayerId
+    ? getSlots().find((slot) => slot.id !== slotId && state.stagedAssignments[slot.id] === draggedPlayerId)
+    : null;
+  if (draggedPlayerId === livePlayerId && draggedDestination && stagedPlayerId && stagedPlayerId !== livePlayerId) {
+    state.stagedAssignments[draggedDestination.id] = null;
+    if (state.selectedPlayerId === livePlayerId || state.selectedPlayerId === stagedPlayerId) state.selectedPlayerId = null;
+    saveState();
+    render();
+    return;
+  }
 
   if (livePlayerId && stagedPlayerId && livePlayerId !== stagedPlayerId) {
     state.stagedAssignments[slotId] = livePlayerId;
@@ -510,6 +544,14 @@ function stageSlotToBench(slotId) {
 function keepSlot(slotId) {
   accrueTime();
   state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
+  saveState();
+  render();
+}
+
+function keepSwap(slotId, pairSlotId) {
+  accrueTime();
+  if (slotId) state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
+  if (pairSlotId) state.stagedAssignments[pairSlotId] = state.liveAssignments[pairSlotId] || null;
   saveState();
   render();
 }
@@ -719,6 +761,8 @@ function hasCompleteLiveLineup() {
 function getPendingSubs() {
   const slots = getSlots();
   const destinationByPlayerId = new Map();
+  const handledSlotIds = new Set();
+  const rows = [];
 
   for (const slot of slots) {
     const livePlayerId = state.liveAssignments[slot.id] || null;
@@ -728,14 +772,35 @@ function getPendingSubs() {
     }
   }
 
-  return slots
-    .map((slot) => {
-      const outgoing = getPlayer(state.liveAssignments[slot.id]);
-      const incoming = getPlayer(state.stagedAssignments[slot.id]);
-      if (!outgoing || incoming?.id === outgoing.id) return null;
-      return { slot, incoming, outgoing, outgoingDestination: destinationByPlayerId.get(outgoing.id) || null };
-    })
-    .filter(Boolean);
+  for (const slot of slots) {
+    if (handledSlotIds.has(slot.id)) continue;
+
+    const outgoing = getPlayer(state.liveAssignments[slot.id]);
+    const incoming = getPlayer(state.stagedAssignments[slot.id]);
+    if (!outgoing || incoming?.id === outgoing.id) continue;
+
+    const outgoingDestination = destinationByPlayerId.get(outgoing.id) || null;
+    if (incoming && outgoingDestination && outgoingDestination.id !== slot.id) {
+      const pairLivePlayerId = state.liveAssignments[outgoingDestination.id] || null;
+      const pairStagedPlayerId = state.stagedAssignments[outgoingDestination.id] || null;
+      if (pairLivePlayerId === incoming.id && pairStagedPlayerId === outgoing.id) {
+        rows.push({
+          slot: outgoingDestination,
+          pairedSlot: slot,
+          incoming: outgoing,
+          outgoing: incoming,
+          outgoingDestination: slot,
+        });
+        handledSlotIds.add(slot.id);
+        handledSlotIds.add(outgoingDestination.id);
+        continue;
+      }
+    }
+
+    rows.push({ slot, incoming, outgoing, outgoingDestination });
+  }
+
+  return rows;
 }
 
 function formatDuration(seconds) {
@@ -1179,6 +1244,7 @@ function renderSubsPanel() {
 }
 
 function renderSubRow(sub) {
+  const isSwap = Boolean(sub.pairedSlot);
   return `
     <div class="sub-row">
       <div class="sub-flow in">
@@ -1189,8 +1255,9 @@ function renderSubRow(sub) {
       <button
         class="sub-cancel"
         type="button"
-        data-action="keep-slot"
+        data-action="${isSwap ? "keep-swap" : "keep-slot"}"
         data-slot-id="${escapeHtml(sub.slot.id)}"
+        ${isSwap ? `data-pair-slot-id="${escapeHtml(sub.pairedSlot.id)}"` : ""}
         aria-label="Cancel substitution for ${escapeHtml(sub.slot.label)}"
       >
         ${renderIcon("cancel")}
@@ -1523,9 +1590,13 @@ function endChipPointerDrag(event) {
       suppressNextChipClick = false;
     }, 350);
     if (dropTarget.dataset.slotDrop) {
-      stagePlayerInSlot(playerId, dropTarget.dataset.slotDrop);
+      if (dragKind === "field" && sourceSlotId) {
+        stageFieldPlayerInSlot(playerId, sourceSlotId, dropTarget.dataset.slotDrop);
+      } else {
+        stagePlayerInSlot(playerId, dropTarget.dataset.slotDrop);
+      }
     } else if (dropTarget.dataset.benchDrop && dragKind === "field" && sourceSlotId) {
-      stageSlotToBench(sourceSlotId);
+      stageSlotToBench(sourceSlotId, playerId);
     }
   }
 }
@@ -1653,6 +1724,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "keep-slot") keepSlot(target.dataset.slotId);
+  if (action === "keep-swap") keepSwap(target.dataset.slotId, target.dataset.pairSlotId);
   if (action === "clear-slot") setSlotStage(target.dataset.slotId, "");
 });
 
