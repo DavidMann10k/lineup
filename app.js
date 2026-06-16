@@ -992,14 +992,14 @@ function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
 
   return `
     <div
-      class="field-slot-shell ${positionClass(slot.label)}"
+      class="field-slot-shell"
       style="left: ${slot.x}%; top: ${slot.y}%;"
       data-action="assign-slot"
       data-slot-id="${slot.id}"
       data-slot-drop="${slot.id}"
     >
       <button
-        class="field-slot ${isChanged ? "changed" : ""}"
+        class="field-slot ${positionClass(slot.label)} ${isChanged ? "changed" : ""}"
         data-action="assign-slot"
         data-slot-id="${slot.id}"
         ${dragAttributes}
@@ -1332,8 +1332,11 @@ function cancelChipPointerDrag(event) {
 function createDragGhost(source) {
   const rect = source.getBoundingClientRect();
   const ghost = source.cloneNode(true);
+  ghost.classList.remove("dragging");
   ghost.classList.add("drag-ghost");
   ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.minHeight = "0px";
   ghost.style.left = "0px";
   ghost.style.top = "0px";
   return ghost;
