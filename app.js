@@ -991,19 +991,25 @@ function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
     : "";
 
   return `
-    <button
-      class="field-slot ${positionClass(slot.label)} ${isChanged ? "changed" : ""}"
+    <div
+      class="field-slot-shell ${positionClass(slot.label)}"
       style="left: ${slot.x}%; top: ${slot.y}%;"
       data-action="assign-slot"
       data-slot-id="${slot.id}"
       data-slot-drop="${slot.id}"
-      ${dragAttributes}
-      aria-label="${escapeHtml(title)}"
     >
-      <span class="position-label">${renderPositionCode(slot.label)}</span>
-      ${renderSlotBubble(slot, current, staged, movedFieldPlayerIds)}
-      <span class="slot-name">${escapeHtml(slotName(current, staged))}</span>
-    </button>
+      <button
+        class="field-slot ${isChanged ? "changed" : ""}"
+        data-action="assign-slot"
+        data-slot-id="${slot.id}"
+        ${dragAttributes}
+        aria-label="${escapeHtml(title)}"
+      >
+        <span class="position-label">${renderPositionCode(slot.label)}</span>
+        ${renderSlotBubble(slot, current, staged, movedFieldPlayerIds)}
+      </button>
+      <span class="slot-name" aria-hidden="true">${escapeHtml(slotName(current, staged))}</span>
+    </div>
   `;
 }
 
