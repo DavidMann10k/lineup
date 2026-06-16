@@ -33,10 +33,12 @@ The deployment path is GitHub to Cloudflare Pages. Push to GitHub, and let Cloud
 Recommended Cloudflare Pages build settings:
 
 - Root directory: `/`
-- Build command: none
+- Build command: `npm run build`
 - Build output directory: `/`
+- Deploy command: none
 
-Do not use a deploy command for this project. Cloudflare Pages should publish the repository root.
+Do not use a deploy command for this project. If Cloudflare logs show `Executing user deploy command: npx wrangler deploy`, the project settings are still wrong. Cloudflare Pages should run the verification build and then publish the repository root.
+
 Run `npm run build` locally before changing deployment settings; it checks for accidental Wrangler setup, dependencies, missing app shell files, and assets over Cloudflare's 25 MiB limit.
 
 ## Custom Domain
