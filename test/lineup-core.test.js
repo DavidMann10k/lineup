@@ -69,6 +69,120 @@ test("normalizes soccer formation notation and rejects invalid formations", () =
   assert.match(core.normalizeFormation("2-x-1").error, /Use soccer notation/);
 });
 
+test("keeps a bench substitution when its outgoing field player is dragged to another slot", () => {
+  const harness = createHarness();
+  const { state, options } = harness;
+  const players = addPlayers(
+    state,
+    ["Alex", "Blair", "Casey", "Drew", "Emery", "Finley", "Gray", "Harper"],
+    options,
+  );
+
+  assert.equal(core.applyFormation(state, "G-2-3-1", options).ok, true);
+  const slots = fillStagedLineup(state, players, options);
+  assert.equal(core.commitSnapshot(state, options).ok, true);
+
+  const sourceSlot = slots[1];
+  const targetSlot = slots[2];
+  const outgoingSourcePlayer = players[1];
+  const outgoingTargetPlayer = players[2];
+  const benchPlayer = players[7];
+
+  assert.equal(core.stagePlayerInSlot(state, benchPlayer.id, sourceSlot.id, options).ok, true);
+  assert.equal(state.stagedAssignments[sourceSlot.id], benchPlayer.id);
+
+  assert.equal(
+    core.stageFieldPlayerInSlot(state, outgoingSourcePlayer.id, sourceSlot.id, targetSlot.id, options).ok,
+    true,
+  );
+
+  assert.equal(state.stagedAssignments[sourceSlot.id], benchPlayer.id);
+  assert.equal(state.stagedAssignments[targetSlot.id], outgoingSourcePlayer.id);
+  assert.equal(core.getStagedPlayerIds(state).has(outgoingTargetPlayer.id), false);
+
+  const pending = core.getPendingSubs(state);
+  assert.equal(pending.length, 2);
+
+  assert.deepEqual(
+    pending.map((sub) => ({
+      slot: sub.slot.id,
+      incoming: sub.incoming?.id || null,
+      outgoing: sub.outgoing?.id || null,
+      outgoingDestination: sub.outgoingDestination?.id || null,
+    })),
+    [
+      {
+        slot: sourceSlot.id,
+        incoming: benchPlayer.id,
+        outgoing: outgoingSourcePlayer.id,
+        outgoingDestination: targetSlot.id,
+      },
+      {
+        slot: targetSlot.id,
+        incoming: outgoingSourcePlayer.id,
+        outgoing: outgoingTargetPlayer.id,
+        outgoingDestination: null,
+      },
+    ],
+  );
+});
+
+test("keeps both pending rows when a bench player is dragged onto an existing on-field swap", () => {
+  const harness = createHarness();
+  const { state, options } = harness;
+  const players = addPlayers(
+    state,
+    ["Alex", "Blair", "Casey", "Drew", "Emery", "Finley", "Gray", "Harper"],
+    options,
+  );
+
+  assert.equal(core.applyFormation(state, "G-2-3-1", options).ok, true);
+  const slots = fillStagedLineup(state, players, options);
+  assert.equal(core.commitSnapshot(state, options).ok, true);
+
+  const sourceSlot = slots[1];
+  const targetSlot = slots[2];
+  const outgoingSourcePlayer = players[1];
+  const outgoingTargetPlayer = players[2];
+  const benchPlayer = players[7];
+
+  assert.equal(
+    core.stageFieldPlayerInSlot(state, outgoingSourcePlayer.id, sourceSlot.id, targetSlot.id, options).ok,
+    true,
+  );
+  assert.equal(core.stagePlayerInSlot(state, benchPlayer.id, sourceSlot.id, options).ok, true);
+
+  assert.equal(state.stagedAssignments[sourceSlot.id], benchPlayer.id);
+  assert.equal(state.stagedAssignments[targetSlot.id], outgoingSourcePlayer.id);
+  assert.equal(core.getStagedPlayerIds(state).has(outgoingTargetPlayer.id), false);
+
+  const pending = core.getPendingSubs(state);
+  assert.equal(pending.length, 2);
+
+  assert.deepEqual(
+    pending.map((sub) => ({
+      slot: sub.slot.id,
+      incoming: sub.incoming?.id || null,
+      outgoing: sub.outgoing?.id || null,
+      outgoingDestination: sub.outgoingDestination?.id || null,
+    })),
+    [
+      {
+        slot: sourceSlot.id,
+        incoming: benchPlayer.id,
+        outgoing: outgoingSourcePlayer.id,
+        outgoingDestination: targetSlot.id,
+      },
+      {
+        slot: targetSlot.id,
+        incoming: outgoingSourcePlayer.id,
+        outgoing: outgoingTargetPlayer.id,
+        outgoingDestination: null,
+      },
+    ],
+  );
+});
+
 test("runs a full roster, lineup, clock, substitution, swap, period, and reset workflow", () => {
   const harness = createHarness();
   const { state, options } = harness;

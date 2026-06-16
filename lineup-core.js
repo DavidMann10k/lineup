@@ -547,6 +547,10 @@
     if (!sourceSlotId || sourceSlotId === targetSlotId) return { ok: false, reason: "same-slot" };
 
     const displacedPlayerId = state.stagedAssignments[targetSlotId] || state.liveAssignments[targetSlotId] || null;
+    const sourceLivePlayerId = state.liveAssignments[sourceSlotId] || null;
+    const sourceReplacementId = state.stagedAssignments[sourceSlotId] || null;
+    const shouldKeepSourceReplacement =
+      sourceLivePlayerId === playerId && sourceReplacementId && sourceReplacementId !== playerId;
 
     for (const key of Object.keys(state.stagedAssignments)) {
       if (state.stagedAssignments[key] === playerId) state.stagedAssignments[key] = null;
@@ -555,8 +559,11 @@
 
     state.stagedAssignments[targetSlotId] = playerId;
     if (Object.prototype.hasOwnProperty.call(state.stagedAssignments, sourceSlotId)) {
-      state.stagedAssignments[sourceSlotId] =
-        displacedPlayerId && displacedPlayerId !== playerId ? displacedPlayerId : null;
+      state.stagedAssignments[sourceSlotId] = shouldKeepSourceReplacement
+        ? sourceReplacementId
+        : displacedPlayerId && displacedPlayerId !== playerId
+          ? displacedPlayerId
+          : null;
     }
     state.selectedPlayerId = playerId;
     return { ok: true };
