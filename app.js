@@ -17,6 +17,7 @@ function createState() {
     formation: "2-3-1",
     formationError: "",
     rosterSort: "name",
+    rosterSortDirection: "asc",
     selectedPlayerId: null,
     players: [],
     liveAssignments: {},
@@ -37,11 +38,13 @@ function loadState() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved || typeof saved !== "object") return createState();
     const base = createState();
+    const rosterSort = normalizeRosterSort(saved.rosterSort);
     return {
       ...base,
       ...saved,
       clock: { ...base.clock, ...(saved.clock || {}), running: false, lastTickAt: null },
-      rosterSort: normalizeRosterSort(saved.rosterSort),
+      rosterSort,
+      rosterSortDirection: normalizeRosterSortDirection(saved.rosterSortDirection, rosterSort),
       players: Array.isArray(saved.players) ? saved.players.map(normalizePlayer) : [],
       events: Array.isArray(saved.events) ? saved.events.slice(0, 30) : [],
       liveAssignments: saved.liveAssignments || {},
@@ -54,7 +57,16 @@ function loadState() {
 }
 
 function normalizeRosterSort(value) {
-  return value === "playtime" ? "playtime" : "name";
+  return value === "playtime" || value === "active" ? value : "name";
+}
+
+function defaultRosterSortDirection(sortKey) {
+  return sortKey === "name" ? "asc" : "desc";
+}
+
+function normalizeRosterSortDirection(value, sortKey = "name") {
+  if (value === "asc" || value === "desc") return value;
+  return defaultRosterSortDirection(sortKey);
 }
 
 function normalizePlayer(player) {
@@ -275,9 +287,7 @@ function toggleClock() {
     state.clock.running = false;
     state.clock.lastTickAt = null;
   } else {
-    if (Number(state.clock.elapsedSeconds || 0) === 0) {
-      commitSnapshot({ persist: false });
-    }
+    if (!hasCompleteLiveLineup()) return;
     state.clock.running = true;
     state.clock.lastTickAt = Date.now();
   }
@@ -286,6 +296,7 @@ function toggleClock() {
 }
 
 function nextPeriod() {
+  if (!hasCompleteLiveLineup()) return;
   accrueTime();
   state.clock.running = false;
   state.clock.lastTickAt = null;
@@ -296,6 +307,7 @@ function nextPeriod() {
 }
 
 function resetClock() {
+  if (isClockAtZero()) return;
   if (!window.confirm("Reset the game clock? Player playtime totals will stay intact.")) return;
   accrueTime();
   closeLiveStints();
@@ -309,10 +321,10 @@ function resetClock() {
   render();
 }
 
-function resetPlayedTime() {
+function resetForNewGame() {
   if (
     !window.confirm(
-      "Reset all player playtime and the game clock for a new game? Your roster and lineup assignments will stay intact.",
+      "Reset for a new game? This clears the match log, playtime, position history, clock, and moves every player to the bench. Your roster and active choices stay intact.",
     )
   ) {
     return;
@@ -324,6 +336,9 @@ function resetPlayedTime() {
   state.clock.lastTickAt = null;
   state.openStints = {};
   state.events = [];
+  state.liveAssignments = {};
+  state.stagedAssignments = {};
+  state.selectedPlayerId = null;
 
   for (const player of state.players) {
     player.totalSeconds = 0;
@@ -332,7 +347,6 @@ function resetPlayedTime() {
     player.history = [];
   }
 
-  openLiveStints();
   saveState();
   render();
 }
@@ -470,6 +484,29 @@ function setSlotStage(slotId, playerId) {
   stagePlayerInSlot(playerId, slotId);
 }
 
+function stageSlotToBench(slotId) {
+  accrueTime();
+  ensureAssignmentKeys();
+
+  if (!Object.prototype.hasOwnProperty.call(state.stagedAssignments, slotId)) return;
+  const livePlayerId = state.liveAssignments[slotId] || null;
+  const stagedPlayerId = state.stagedAssignments[slotId] || null;
+  if (!livePlayerId && !stagedPlayerId) return;
+
+  if (livePlayerId && stagedPlayerId && livePlayerId !== stagedPlayerId) {
+    state.stagedAssignments[slotId] = livePlayerId;
+    if (state.selectedPlayerId === stagedPlayerId) state.selectedPlayerId = null;
+    saveState();
+    render();
+    return;
+  }
+
+  state.stagedAssignments[slotId] = null;
+  if (state.selectedPlayerId === livePlayerId || state.selectedPlayerId === stagedPlayerId) state.selectedPlayerId = null;
+  saveState();
+  render();
+}
+
 function keepSlot(slotId) {
   accrueTime();
   state.stagedAssignments[slotId] = state.liveAssignments[slotId] || null;
@@ -487,9 +524,22 @@ function resetStagedLineup() {
   render();
 }
 
+function setRosterSort(sortKey) {
+  const nextSort = normalizeRosterSort(sortKey);
+  if (state.rosterSort === nextSort) {
+    state.rosterSortDirection = state.rosterSortDirection === "asc" ? "desc" : "asc";
+  } else {
+    state.rosterSort = nextSort;
+    state.rosterSortDirection = defaultRosterSortDirection(nextSort);
+  }
+  saveState();
+  render();
+}
+
 function commitSnapshot({ persist = true } = {}) {
   accrueTime();
   ensureAssignmentKeys();
+  if (!isStagedFormationFilled()) return;
 
   const slots = getSlots();
   const previous = { ...state.liveAssignments };
@@ -617,15 +667,24 @@ function comparePlayersByName(a, b) {
   return NAME_COLLATOR.compare(a.id, b.id);
 }
 
-function getRosterPlayers() {
-  return [...state.players].sort((a, b) => {
-    if (state.rosterSort === "playtime") {
-      const time = Number(b.totalSeconds || 0) - Number(a.totalSeconds || 0);
-      if (time) return time;
-    }
+function compareRosterPlayers(a, b) {
+  const direction = state.rosterSortDirection === "desc" ? -1 : 1;
+  let result = 0;
 
-    return comparePlayersByName(a, b);
-  });
+  if (state.rosterSort === "playtime") {
+    result = Number(a.totalSeconds || 0) - Number(b.totalSeconds || 0);
+  } else if (state.rosterSort === "active") {
+    result = Number(Boolean(a.active)) - Number(Boolean(b.active));
+  } else {
+    result = comparePlayersByName(a, b);
+  }
+
+  if (result) return result * direction;
+  return comparePlayersByName(a, b);
+}
+
+function getRosterPlayers() {
+  return [...state.players].sort(compareRosterPlayers);
 }
 
 function getChangedSlots() {
@@ -634,13 +693,47 @@ function getChangedSlots() {
   });
 }
 
+function isClockAtZero() {
+  return Number(state.clock.elapsedSeconds || 0) <= 0;
+}
+
+function isAssignmentFormationFilled(assignments) {
+  const usedPlayerIds = new Set();
+
+  return getSlots().every((slot) => {
+    const player = getPlayer(assignments[slot.id]);
+    if (!player || !player.active || usedPlayerIds.has(player.id)) return false;
+    usedPlayerIds.add(player.id);
+    return true;
+  });
+}
+
+function isStagedFormationFilled() {
+  return isAssignmentFormationFilled(state.stagedAssignments);
+}
+
+function hasCompleteLiveLineup() {
+  return isAssignmentFormationFilled(state.liveAssignments);
+}
+
 function getPendingSubs() {
-  return getSlots()
+  const slots = getSlots();
+  const destinationByPlayerId = new Map();
+
+  for (const slot of slots) {
+    const livePlayerId = state.liveAssignments[slot.id] || null;
+    const stagedPlayerId = state.stagedAssignments[slot.id] || null;
+    if (stagedPlayerId && stagedPlayerId !== livePlayerId) {
+      destinationByPlayerId.set(stagedPlayerId, slot);
+    }
+  }
+
+  return slots
     .map((slot) => {
       const outgoing = getPlayer(state.liveAssignments[slot.id]);
       const incoming = getPlayer(state.stagedAssignments[slot.id]);
-      if (!incoming || !outgoing || incoming.id === outgoing.id) return null;
-      return { slot, incoming, outgoing };
+      if (!outgoing || incoming?.id === outgoing.id) return null;
+      return { slot, incoming, outgoing, outgoingDestination: destinationByPlayerId.get(outgoing.id) || null };
     })
     .filter(Boolean);
 }
@@ -764,8 +857,8 @@ function renderIcon(name) {
       '<path d="M18.8 8.2A7.2 7.2 0 1 0 19 15" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round"></path><path d="M19 4.8v4.1h-4.1" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"></path>',
     swapVertical:
       '<path d="M8 4v14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M4.5 14.5 8 18l3.5-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M16 20V6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M12.5 9.5 16 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>',
-    swapHorizontal:
-      '<path d="M4 8h13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="m14 5 3 3-3 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M20 16H7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="m10 13-3 3 3 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>',
+    chair:
+      '<path d="M8 10h8a2 2 0 0 1 2 2v3H6v-3a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"></path><path d="M8 10V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"></path><path d="M7 15v5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path><path d="M17 15v5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>',
     cancel:
       '<path d="m7 7 10 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path><path d="m17 7-10 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path>',
     check:
@@ -776,8 +869,12 @@ function renderIcon(name) {
 }
 
 function renderHeader() {
+  const startingLineupSet = hasCompleteLiveLineup();
+  const startDisabled = !state.clock.running && !startingLineupSet;
+  const nextPeriodDisabled = !startingLineupSet;
+  const resetClockHidden = isClockAtZero();
   const clockState = `P${state.clock.period} ${state.clock.running ? "running" : "paused"}`;
-  const playLabel = state.clock.running ? "Pause clock" : "Start clock";
+  const playLabel = startDisabled ? "Set starting lineup before starting clock" : state.clock.running ? "Pause clock" : "Start clock";
 
   return `
     <header class="app-header">
@@ -800,13 +897,13 @@ function renderHeader() {
           <strong data-clock-time>${formatDuration(state.clock.elapsedSeconds)}</strong>
         </div>
         <div class="clock-controls" aria-label="Clock controls">
-          <button class="clock-icon-button ${state.clock.running ? "pause" : "play"}" data-action="toggle-clock" aria-label="${playLabel}" title="${playLabel}">
+          <button class="clock-icon-button ${state.clock.running ? "pause" : "play"}" data-action="toggle-clock" aria-label="${playLabel}" title="${playLabel}" ${startDisabled ? "disabled" : ""}>
             ${renderIcon(state.clock.running ? "pause" : "play")}
           </button>
-          <button class="clock-icon-button" data-action="next-period" aria-label="Next period" title="Next period">
+          <button class="clock-icon-button" data-action="next-period" aria-label="Next period" title="Next period" ${nextPeriodDisabled ? "disabled" : ""}>
             ${renderIcon("next")}
           </button>
-          <button class="clock-icon-button" data-action="reset-clock" aria-label="Reset clock" title="Reset clock">
+          <button class="clock-icon-button" data-action="reset-clock" data-reset-clock aria-label="Reset clock" title="Reset clock" ${resetClockHidden ? "hidden" : ""}>
             ${renderIcon("refresh")}
           </button>
         </div>
@@ -835,19 +932,6 @@ function renderRoster() {
           </div>
           <button class="button green" type="submit">Add</button>
         </form>
-        <div class="roster-actions">
-          <label class="roster-sort-control" for="roster-sort">
-            <span>Sort</span>
-            <select id="roster-sort" data-action="set-roster-sort">
-              <option value="name" ${state.rosterSort === "name" ? "selected" : ""}>Name</option>
-              <option value="playtime" ${state.rosterSort === "playtime" ? "selected" : ""}>Playtime</option>
-            </select>
-          </label>
-          <button class="button secondary" type="button" data-action="reset-played-time">
-            ${renderIcon("refresh")}
-            <span>Reset time</span>
-          </button>
-        </div>
       </div>
 
       <div class="stat-grid" aria-label="Roster totals">
@@ -878,9 +962,9 @@ function renderRosterTable() {
     <table>
       <thead>
         <tr>
-          <th>Player</th>
-          <th>Active</th>
-          <th>Playtime</th>
+          ${renderRosterSortHeader("Player", "name")}
+          ${renderRosterSortHeader("Active", "active")}
+          ${renderRosterSortHeader("Playtime", "playtime")}
           <th>Usage</th>
           <th>Actions</th>
         </tr>
@@ -889,6 +973,28 @@ function renderRosterTable() {
         ${getRosterPlayers().map(renderRosterRow).join("")}
       </tbody>
     </table>
+  `;
+}
+
+function renderRosterSortHeader(label, sortKey) {
+  const isActive = state.rosterSort === sortKey;
+  const nextDirection = isActive && state.rosterSortDirection === "asc" ? "descending" : "ascending";
+  const sortLabel = isActive ? (state.rosterSortDirection === "asc" ? "ascending" : "descending") : "none";
+  const indicator = isActive ? (state.rosterSortDirection === "asc" ? "&uarr;" : "&darr;") : "";
+
+  return `
+    <th aria-sort="${sortLabel}">
+      <a
+        class="sort-header ${isActive ? "active" : ""}"
+        href="#sort-${sortKey}"
+        data-action="set-roster-sort"
+        data-roster-sort="${sortKey}"
+        aria-label="Sort ${escapeHtml(label)} ${nextDirection}"
+      >
+        <span>${escapeHtml(label)}</span>
+        <span class="sort-indicator" aria-hidden="true">${indicator}</span>
+      </a>
+    </th>
   `;
 }
 
@@ -911,7 +1017,9 @@ function renderRosterRow(player) {
         </label>
       </td>
       <td data-player-total="${player.id}">${renderTimeCode(player.totalSeconds)}</td>
-      <td class="usage-list" data-player-usage="${player.id}">${renderUsageReadout(player)}</td>
+      <td>
+        <div class="usage-list" data-player-usage="${player.id}">${renderUsageReadout(player)}</div>
+      </td>
       <td>
         <div class="row-actions">
           <button class="button small ghost" data-action="remove-player" data-player-id="${player.id}">Remove</button>
@@ -1020,6 +1128,7 @@ function renderPlayerModal() {
 
 function renderFormation() {
   const changedSlots = getChangedSlots();
+  const startingLineupSet = hasCompleteLiveLineup();
 
   return `
     <section class="formation-screen">
@@ -1028,8 +1137,9 @@ function renderFormation() {
           <section class="field-zone">
             ${renderPitch()}
           </section>
-          ${renderSubsPanel()}
+          ${startingLineupSet ? "" : renderStartingLineupPrompt()}
           ${renderBench(changedSlots.length)}
+          ${renderSubsPanel()}
           ${renderFormationEditor()}
         </div>
 
@@ -1038,6 +1148,16 @@ function renderFormation() {
         </aside>
       </div>
     </section>
+  `;
+}
+
+function renderStartingLineupPrompt() {
+  const stagedFilled = isStagedFormationFilled();
+  return `
+    <div class="lineup-start-message" role="status">
+      <strong>Set the starting lineup</strong>
+      <span>${stagedFilled ? "Use Set Lineup before starting the clock." : "Fill every position, then use Set Lineup before starting the clock."}</span>
+    </div>
   `;
 }
 
@@ -1061,16 +1181,28 @@ function renderSubsPanel() {
 function renderSubRow(sub) {
   return `
     <div class="sub-row">
-      <div class="sub-person in">
-        <span>In</span>
-        <strong>${escapeHtml(sub.incoming.name)}</strong>
+      <div class="sub-flow in">
+        <strong class="sub-name ${sub.incoming ? "" : "empty"}">${sub.incoming ? escapeHtml(sub.incoming.name) : "Open"}</strong>
+        <span class="sub-arrow" aria-hidden="true">&rarr;</span>
+        <span class="sub-position ${positionClass(sub.slot.label)}" aria-hidden="true">${escapeHtml(sub.slot.label)}</span>
       </div>
-      <div class="sub-swap" aria-hidden="true">
-        ${renderIcon("swapHorizontal")}
-      </div>
-      <div class="sub-person out">
-        <span>Out</span>
-        <strong>${escapeHtml(sub.outgoing.name)}</strong>
+      <button
+        class="sub-cancel"
+        type="button"
+        data-action="keep-slot"
+        data-slot-id="${escapeHtml(sub.slot.id)}"
+        aria-label="Cancel substitution for ${escapeHtml(sub.slot.label)}"
+      >
+        ${renderIcon("cancel")}
+      </button>
+      <div class="sub-flow out">
+        <strong class="sub-name">${escapeHtml(sub.outgoing.name)}</strong>
+        <span class="sub-arrow" aria-hidden="true">&rarr;</span>
+        ${
+          sub.outgoingDestination
+            ? `<span class="sub-position ${positionClass(sub.outgoingDestination.label)}" aria-hidden="true">${escapeHtml(sub.outgoingDestination.label)}</span>`
+            : `<span class="sub-chair" aria-hidden="true">${renderIcon("chair")}</span>`
+        }
       </div>
     </div>
   `;
@@ -1114,6 +1246,9 @@ function renderFieldSlot(slot) {
   const staged = getPlayer(state.stagedAssignments[slot.id]);
   const isChanged = (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
   const title = `${slot.label} ${slot.role}`;
+  const dragAttributes = current
+    ? `data-player-chip="${current.id}" data-drag-kind="field" data-source-slot-id="${slot.id}"`
+    : "";
 
   return `
     <button
@@ -1122,6 +1257,7 @@ function renderFieldSlot(slot) {
       data-action="assign-slot"
       data-slot-id="${slot.id}"
       data-slot-drop="${slot.id}"
+      ${dragAttributes}
       aria-label="${escapeHtml(title)}"
     >
       <span class="position-label">${renderPositionCode(slot.label)}</span>
@@ -1145,7 +1281,7 @@ function renderSlotBubble(current, staged) {
     return `
       <span class="duo-bubbles">
         <span class="player-bubble">${escapeHtml(initials(current.name))}</span>
-        <span class="pending-off">OFF</span>
+        <span class="player-bubble empty">+</span>
       </span>
     `;
   }
@@ -1166,15 +1302,16 @@ function slotName(current, staged) {
 function renderBench(pendingCount) {
   const benchPlayers = getBenchPlayers();
   const inactivePlayers = getInactivePlayers();
+  const canSetLineup = isStagedFormationFilled();
 
   return `
-    <section class="bench-strip">
+    <section class="bench-strip" data-bench-drop="true">
       <div class="bench-head">
         <div>
           <h2>Bench</h2>
         </div>
         <div class="bench-actions">
-          <button class="button green bench-action" data-action="snapshot">
+          <button class="button green bench-action" data-action="snapshot" ${canSetLineup ? "" : "disabled"} title="${canSetLineup ? "Set lineup" : "Fill every position before setting lineup"}">
             ${renderIcon("swapVertical")}
             <span>Set Lineup</span>
           </button>
@@ -1260,7 +1397,10 @@ function renderEventLog() {
     <section class="event-log">
       <div class="event-head">
         <h2>Match log</h2>
-        <span class="selected-pill">${state.events.length} events</span>
+        <button class="button small secondary event-reset" type="button" data-action="reset-new-game">
+          ${renderIcon("refresh")}
+          <span>New game</span>
+        </button>
       </div>
       ${
         state.events.length
@@ -1303,6 +1443,9 @@ function updateDynamicDom() {
   document.querySelectorAll("[data-clock-state]").forEach((node) => {
     node.textContent = `P${state.clock.period} ${state.clock.running ? "running" : "paused"}`;
   });
+  document.querySelectorAll("[data-reset-clock]").forEach((node) => {
+    node.hidden = isClockAtZero();
+  });
   document.querySelectorAll("[data-player-total]").forEach((node) => {
     const player = getPlayer(node.dataset.playerTotal);
     if (player) node.innerHTML = renderTimeCode(player.totalSeconds);
@@ -1327,6 +1470,8 @@ function startChipPointerDrag(event) {
 
   activeChipDrag = {
     playerId,
+    dragKind: chip.dataset.dragKind || "bench",
+    sourceSlotId: chip.dataset.sourceSlotId || null,
     source: chip,
     pointerId: event.pointerId,
     startX: event.clientX,
@@ -1367,6 +1512,8 @@ function endChipPointerDrag(event) {
 
   const dropTarget = activeChipDrag.currentDrop;
   const playerId = activeChipDrag.playerId;
+  const dragKind = activeChipDrag.dragKind;
+  const sourceSlotId = activeChipDrag.sourceSlotId;
   const didDrag = activeChipDrag.dragging;
   cleanupChipPointerDrag(event.pointerId);
 
@@ -1375,7 +1522,11 @@ function endChipPointerDrag(event) {
     window.setTimeout(() => {
       suppressNextChipClick = false;
     }, 350);
-    stagePlayerInSlot(playerId, dropTarget.dataset.slotDrop);
+    if (dropTarget.dataset.slotDrop) {
+      stagePlayerInSlot(playerId, dropTarget.dataset.slotDrop);
+    } else if (dropTarget.dataset.benchDrop && dragKind === "field" && sourceSlotId) {
+      stageSlotToBench(sourceSlotId);
+    }
   }
 }
 
@@ -1404,7 +1555,7 @@ function updatePointerDropTarget(x, y) {
   activeChipDrag.ghost.hidden = true;
   const element = document.elementFromPoint(x, y);
   activeChipDrag.ghost.hidden = false;
-  const next = element?.closest?.("[data-slot-drop]") || null;
+  const next = element?.closest?.("[data-slot-drop], [data-bench-drop]") || null;
 
   if (previous === next) return;
   previous?.classList.remove("drag-over");
@@ -1438,7 +1589,7 @@ document.addEventListener("click", (event) => {
 
   const action = target.dataset.action;
 
-  if (action === "select-player" && suppressNextChipClick) {
+  if ((action === "select-player" || action === "assign-slot") && suppressNextChipClick) {
     suppressNextChipClick = false;
     event.preventDefault();
     return;
@@ -1455,10 +1606,15 @@ document.addEventListener("click", (event) => {
     window.location.href = buildContactHref();
   }
 
+  if (action === "set-roster-sort") {
+    event.preventDefault();
+    setRosterSort(target.dataset.rosterSort);
+  }
+
   if (action === "toggle-clock") toggleClock();
   if (action === "next-period") nextPeriod();
   if (action === "reset-clock") resetClock();
-  if (action === "reset-played-time") resetPlayedTime();
+  if (action === "reset-new-game") resetForNewGame();
   if (action === "snapshot") commitSnapshot();
   if (action === "reset-staged") resetStagedLineup();
   if (action === "remove-player") removePlayer(target.dataset.playerId);
@@ -1518,11 +1674,6 @@ document.addEventListener("change", (event) => {
     setSlotStage(target.dataset.slotId, target.value);
   }
 
-  if (target.dataset.action === "set-roster-sort") {
-    state.rosterSort = normalizeRosterSort(target.value);
-    saveState();
-    render();
-  }
 });
 
 document.addEventListener("submit", (event) => {
