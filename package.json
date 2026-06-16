@@ -2,7 +2,8 @@
   "name": "lineup",
   "private": true,
   "scripts": {
-    "test": "node --test"
+    "build": "node scripts/verify-static-deploy.js",
+    "test": "node --test && node scripts/verify-static-deploy.js"
   },
   "engines": {
     "node": ">=20"

@@ -22,8 +22,9 @@ Open `index.html` directly in a browser.
 ## Scripts
 
 - `npm test`: runs the dependency-free Node test suite for the lineup core.
+- `npm run build`: verifies the static deploy root is safe to publish.
 
-The test suite uses Node's built-in `node:test` runner and has no third-party dependencies.
+The test suite uses Node's built-in `node:test` runner and also runs the static deploy verification. The project has no third-party dependencies.
 
 ## Cloudflare Deployment
 
@@ -36,6 +37,7 @@ Recommended Cloudflare Pages build settings:
 - Build output directory: `/`
 
 Do not use a deploy command for this project. Cloudflare Pages should publish the repository root.
+Run `npm run build` locally before changing deployment settings; it checks for accidental Wrangler setup, dependencies, missing app shell files, and assets over Cloudflare's 25 MiB limit.
 
 ## Custom Domain
 
