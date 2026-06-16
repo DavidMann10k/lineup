@@ -495,7 +495,6 @@ button:focus-visible {
 .field-zone,
 .lineup-panel,
 .roster-table-wrap,
-.stat-grid,
 .subs-panel,
 .bench-strip,
 .event-log {
@@ -1145,37 +1144,6 @@ button:focus-visible {
   gap: 6px;
 }
 
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  background: var(--line);
-}
-
-.stat {
-  min-width: 0;
-  padding: 14px;
-  background: var(--surface);
-}
-
-.stat span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.stat strong {
-  display: block;
-  margin-top: 4px;
-  overflow: hidden;
-  font-size: clamp(1.15rem, 2vw, 1.7rem);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .roster-screen {
   display: grid;
   gap: 16px;
@@ -1691,10 +1659,6 @@ tr:last-child td {
 
   .bench-action span {
     display: inline;
-  }
-
-  .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .slot-row {

@@ -1014,11 +1014,6 @@ function renderHeader() {
 }
 
 function renderRoster() {
-  const activeCount = state.players.filter((player) => player.active).length;
-  const inactiveCount = state.players.length - activeCount;
-  const onFieldCount = getLivePlayerIds().size;
-  const benchCount = getBenchPlayers().length;
-
   return `
     <section class="roster-screen">
       <div class="roster-toolbar">
@@ -1035,26 +1030,10 @@ function renderRoster() {
         </form>
       </div>
 
-      <div class="stat-grid" aria-label="Roster totals">
-        ${renderStat("Active", activeCount)}
-        ${renderStat("On field", onFieldCount)}
-        ${renderStat("Bench", benchCount)}
-        ${renderStat("Inactive", inactiveCount)}
-      </div>
-
       <div class="roster-table-wrap">
         ${state.players.length ? renderRosterTable() : `<div class="empty-state empty-padded">No players yet.</div>`}
       </div>
     </section>
-  `;
-}
-
-function renderStat(label, value) {
-  return `
-    <div class="stat">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-    </div>
   `;
 }
 
