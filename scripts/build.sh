@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR/assets"
 
-for file in index.html styles.css lineup-core.js app.js sw.js manifest.webmanifest _headers; do
+for file in index.html styles.css lineup-core.js match-log-export.js app.js sw.js manifest.webmanifest _headers; do
   cp "$ROOT_DIR/$file" "$DIST_DIR/$file"
 done
 

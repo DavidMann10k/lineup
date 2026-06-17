@@ -13,6 +13,7 @@ const requiredRootFiles = [
   "styles.css",
   "app.js",
   "lineup-core.js",
+  "match-log-export.js",
   "manifest.webmanifest",
   "sw.js",
   "_headers",

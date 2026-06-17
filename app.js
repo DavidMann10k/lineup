@@ -2,6 +2,8 @@
 
 const lineupCore = window.LineupCore;
 if (!lineupCore) throw new Error("LineupCore failed to load.");
+const matchLogExport = window.MatchLogExport;
+if (!matchLogExport) throw new Error("MatchLogExport failed to load.");
 
 const STORAGE_KEY = lineupCore.STORAGE_KEY;
 const app = document.getElementById("app");
@@ -335,6 +337,8 @@ function renderIcon(name) {
       '<path d="M5 5v14l10-7L5 5z" fill="currentColor"></path><path d="M18 5v14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path>',
     refresh:
       '<path d="M18.8 8.2A7.2 7.2 0 1 0 19 15" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round"></path><path d="M19 4.8v4.1h-4.1" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"></path>',
+    download:
+      '<path d="M12 4v10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="m8.5 10.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M5 18h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path>',
     swapVertical:
       '<path d="M8 4v14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M4.5 14.5 8 18l3.5-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M16 20V6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M12.5 9.5 16 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>',
     cancel:
@@ -1090,10 +1094,22 @@ function renderEventLog() {
     <section class="event-log">
       <div class="event-head">
         <h2>Match log</h2>
-        <button class="button small secondary event-reset" type="button" data-action="reset-new-game">
-          ${renderIcon("refresh")}
-          <span>New game</span>
-        </button>
+        <div class="event-actions">
+          <button
+            class="button small secondary event-action"
+            type="button"
+            data-action="export-match-log"
+            ${state.events.length ? "" : "disabled"}
+            title="${state.events.length ? "Export match log" : "No match log entries to export"}"
+          >
+            ${renderIcon("download")}
+            <span>Export</span>
+          </button>
+          <button class="button small secondary event-action" type="button" data-action="reset-new-game">
+            ${renderIcon("refresh")}
+            <span>New game</span>
+          </button>
+        </div>
       </div>
       ${
         state.events.length
@@ -1415,6 +1431,7 @@ document.addEventListener("click", (event) => {
   if (action === "next-period") nextPeriod();
   if (action === "reset-clock") resetClock();
   if (action === "reset-new-game") resetForNewGame();
+  if (action === "export-match-log") matchLogExport.exportMatchLog(state);
   if (action === "snapshot") commitSnapshot();
   if (action === "remove-player") removePlayer(target.dataset.playerId);
   if (action === "open-player-details") {

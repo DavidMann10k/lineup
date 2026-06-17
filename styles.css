@@ -904,7 +904,8 @@ button:focus-visible {
   margin-bottom: 0;
 }
 
-.bench-actions {
+.bench-actions,
+.event-actions {
   display: inline-flex;
   flex: 0 0 auto;
   flex-wrap: wrap;
@@ -912,12 +913,14 @@ button:focus-visible {
   gap: 8px;
 }
 
-.bench-action {
+.bench-action,
+.event-action {
   min-height: 38px;
   padding-inline: 10px;
 }
 
-.bench-action .icon {
+.bench-action .icon,
+.event-action .icon {
   width: 19px;
   height: 19px;
 }
@@ -928,16 +931,6 @@ button:focus-visible {
 .event-head h2 {
   margin: 0;
   font-size: 0.95rem;
-}
-
-.event-reset {
-  min-height: 34px;
-  padding-inline: 9px;
-}
-
-.event-reset .icon {
-  width: 16px;
-  height: 16px;
 }
 
 .subs-list {
@@ -1686,23 +1679,27 @@ tr:last-child td {
     flex-direction: row;
   }
 
-  .bench-actions {
+  .bench-actions,
+  .event-actions {
     display: inline-flex;
     width: auto;
   }
 
-  .bench-action {
+  .bench-action,
+  .event-action {
     width: auto;
     min-height: 44px;
     padding: 0 12px;
   }
 
-  .bench-action .icon {
+  .bench-action .icon,
+  .event-action .icon {
     width: 21px;
     height: 21px;
   }
 
-  .bench-action span {
+  .bench-action span,
+  .event-action span {
     display: inline;
   }
 
