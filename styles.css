@@ -410,8 +410,8 @@ button {
 }
 
 .formation-form {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: max-content minmax(160px, 280px) auto;
   align-items: end;
   gap: 10px;
 }
@@ -425,7 +425,11 @@ button {
 }
 
 .formation-form {
-  width: 100%;
+  width: auto;
+}
+
+.formation-rows {
+  min-width: 0;
 }
 
 .formation-apply .icon {
@@ -436,6 +440,19 @@ button {
   display: grid;
   min-width: 112px;
   gap: 5px;
+}
+
+.formation-form .field-group {
+  min-width: 0;
+}
+
+.goalie-field {
+  justify-items: center;
+}
+
+.goalie-field .switch {
+  align-self: center;
+  margin: 5px 0;
 }
 
 .field-group.grow {
@@ -1643,10 +1660,8 @@ tr:last-child td {
   }
 
   .formation-form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-columns: 48px minmax(0, 1fr) 44px;
     gap: 8px;
-    align-items: end;
     width: 100%;
   }
 

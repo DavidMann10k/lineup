@@ -131,32 +131,34 @@
     const cleaned = String(value || "")
       .trim()
       .replace(/\s+/g, "");
-    const parts = cleaned.split("-");
+    const goalieMarkers = cleaned.match(/g/gi) || [];
+    let body = cleaned;
     let hasGoalie = false;
-    const rowParts = [];
 
-    if (!cleaned || parts.some((part) => !part)) {
-      return { error: "Use soccer notation like G-2-3-1, 2-3-1, or 4-3-3." };
+    if (!cleaned) {
+      return { error: "Use soccer notation like G-2-3-1, 231, or 4-3-3." };
     }
 
-    for (const part of parts) {
-      if (/^g$/i.test(part)) {
-        if (hasGoalie) return { error: "Use only one goalie marker." };
-        hasGoalie = true;
-        continue;
-      }
+    if (goalieMarkers.length > 1) return { error: "Use only one goalie marker." };
 
-      if (!/^\d{1,2}$/.test(part)) {
-        return { error: "Use soccer notation like G-2-3-1, 2-3-1, or 4-3-3." };
-      }
-
-      rowParts.push(part);
+    if (/^g-?/i.test(body)) {
+      hasGoalie = true;
+      body = body.replace(/^g-?/i, "");
     }
 
-    if (!rowParts.length) {
+    if (!body) {
       return { error: "Add at least one formation line." };
     }
 
+    if (goalieMarkers.length && !hasGoalie) {
+      return { error: "Use soccer notation like G-2-3-1, 231, or 4-3-3." };
+    }
+
+    if (!/^[1-6](?:-?[1-6])*$/.test(body)) {
+      return { error: "Use soccer notation like G-2-3-1, 231, or 4-3-3." };
+    }
+
+    const rowParts = body.replace(/-/g, "").split("");
     const rows = rowParts.map((part) => Number(part));
     const total = rows.reduce((sum, count) => sum + count, 0);
 

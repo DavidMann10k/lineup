@@ -48,6 +48,16 @@ test("normalizes soccer formation notation and rejects invalid formations", () =
     rows: [2, 3, 1],
     hasGoalie: true,
   });
+  assert.deepEqual(core.normalizeFormation("G231"), {
+    value: "G-2-3-1",
+    rows: [2, 3, 1],
+    hasGoalie: true,
+  });
+  assert.deepEqual(core.normalizeFormation("231"), {
+    value: "2-3-1",
+    rows: [2, 3, 1],
+    hasGoalie: false,
+  });
   assert.deepEqual(core.normalizeFormation("4-3-3"), {
     value: "4-3-3",
     rows: [4, 3, 3],

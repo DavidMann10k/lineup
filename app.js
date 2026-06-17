@@ -107,6 +107,24 @@ function applyFormation(value) {
   render();
 }
 
+function formationHasGoalie(value = state.formation) {
+  return lineupCore.normalizeFormation(value).hasGoalie === true;
+}
+
+function formationRowsValue(value = state.formation) {
+  const result = lineupCore.normalizeFormation(value);
+  return (result.value || String(value || "")).replace(/^G-?/i, "");
+}
+
+function formationValueFromForm(data) {
+  const rows = String(data.get("formation") || "").trim();
+  return `${data.get("goalie") === "on" ? "G-" : ""}${rows}`;
+}
+
+function applyFormationForm(form) {
+  applyFormation(formationValueFromForm(new FormData(form)));
+}
+
 function addPlayer(name, number) {
   const result = lineupCore.addPlayer(state, name, number);
   if (!result.ok) return;
@@ -647,9 +665,31 @@ function renderFormationEditor() {
   return `
     <section class="formation-editor">
       <form class="formation-form" data-form="formation">
-        <div class="field-group">
+        <div class="field-group goalie-field">
+          <label for="goalie-input">Goalie</label>
+          <label class="switch">
+            <input
+              id="goalie-input"
+              type="checkbox"
+              name="goalie"
+              data-action="toggle-goalie"
+              ${formationHasGoalie() ? "checked" : ""}
+              aria-label="Include goalkeeper"
+            >
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="field-group formation-rows">
           <label for="formation-input">Formation</label>
-          <input id="formation-input" name="formation" value="${escapeHtml(state.formation)}" inputmode="text" autocomplete="off">
+          <input
+            id="formation-input"
+            name="formation"
+            type="tel"
+            value="${escapeHtml(formationRowsValue())}"
+            inputmode="tel"
+            pattern="[0-9-]*"
+            autocomplete="off"
+          >
         </div>
         <button class="button secondary formation-apply" type="submit" aria-label="Apply formation">
           ${renderIcon("check")}
@@ -1487,6 +1527,11 @@ document.addEventListener("change", (event) => {
     setPlayerActive(target.dataset.playerId, target.checked);
   }
 
+  if (target.dataset.action === "toggle-goalie") {
+    const form = target.closest('form[data-form="formation"]');
+    if (form instanceof HTMLFormElement) applyFormationForm(form);
+  }
+
   if (target.dataset.action === "stage-select") {
     setSlotStage(target.dataset.slotId, target.value);
   }
@@ -1514,8 +1559,7 @@ document.addEventListener("submit", (event) => {
 
   if (form.dataset.form === "formation") {
     event.preventDefault();
-    const data = new FormData(form);
-    applyFormation(String(data.get("formation") || ""));
+    applyFormationForm(form);
   }
 });
 
