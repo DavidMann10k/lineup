@@ -43,6 +43,8 @@ function fillStagedLineup(state, players, options) {
 }
 
 test("normalizes soccer formation notation and rejects invalid formations", () => {
+  assert.equal(core.createState().formation, "G-2-3-1");
+
   assert.deepEqual(core.normalizeFormation(" G - 2 - 3 - 1 "), {
     value: "G-2-3-1",
     rows: [2, 3, 1],

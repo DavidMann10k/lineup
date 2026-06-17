@@ -14,7 +14,7 @@
   function createState() {
     return {
       view: "formation",
-      formation: "2-3-1",
+      formation: "G-2-3-1",
       formationError: "",
       rosterSort: "playtime",
       rosterSortDirection: "asc",
