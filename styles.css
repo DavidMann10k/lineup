@@ -813,8 +813,8 @@ button:focus-visible {
 .player-bubble.empty {
   border-style: dashed;
   background: var(--slot-color, rgba(23, 33, 43, 0.32));
+  background: color-mix(in srgb, var(--slot-color, var(--ink)) 58%, var(--ink));
   font-size: 1rem;
-  opacity: 0.82;
 }
 
 .substitution-bubble-layer {
