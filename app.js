@@ -405,11 +405,12 @@ function renderRoster() {
 }
 
 function renderRosterTable() {
+  const rosterPlayers = getRosterPlayers();
   return `
     <table>
       <thead>
         <tr>
-          ${renderRosterSortHeader("Player", "name")}
+          ${renderRosterSortHeader(`Player (${rosterPlayers.length})`, "name")}
           ${renderRosterSortHeader("Active", "active")}
           ${renderRosterSortHeader("Playtime", "playtime")}
           <th>Usage</th>
@@ -417,7 +418,7 @@ function renderRosterTable() {
         </tr>
       </thead>
       <tbody data-roster-body>
-        ${getRosterPlayers().map(renderRosterRow).join("")}
+        ${rosterPlayers.map(renderRosterRow).join("")}
       </tbody>
     </table>
   `;
