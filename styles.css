@@ -1198,6 +1198,37 @@ button:focus-visible {
   overflow-x: auto;
 }
 
+.roster-settings {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.setting-title {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.chip-mode-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chip-mode-choice {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.chip-mode-choice.active {
+  color: var(--ink);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -1473,11 +1504,6 @@ tr:last-child td {
   font-size: 1.08rem;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.player-modal-title span {
-  color: var(--muted);
-  font-size: 0.82rem;
 }
 
 .modal-close {

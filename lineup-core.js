@@ -19,6 +19,7 @@
       rosterSort: "playtime",
       rosterSortDirection: "asc",
       rosterSortDefaultVersion: 2,
+      playerChipMode: "names",
       selectedPlayerId: null,
       players: [],
       liveAssignments: {},
@@ -56,6 +57,7 @@
       rosterSort,
       rosterSortDirection,
       rosterSortDefaultVersion: base.rosterSortDefaultVersion,
+      playerChipMode: normalizePlayerChipMode(saved.playerChipMode, base.playerChipMode),
       players: Array.isArray(saved.players) ? saved.players.map(normalizePlayer) : [],
       events: Array.isArray(saved.events) ? saved.events.slice(0, 30) : [],
       liveAssignments: isRecord(saved.liveAssignments) ? { ...saved.liveAssignments } : {},
@@ -91,6 +93,10 @@
   function normalizeRosterSortDirection(value, sortKey = "playtime") {
     if (value === "asc" || value === "desc") return value;
     return defaultRosterSortDirection(sortKey);
+  }
+
+  function normalizePlayerChipMode(value, fallback = "names") {
+    return value === "numbers" || value === "names" ? value : fallback;
   }
 
   function normalizePlayer(player = {}) {
@@ -642,6 +648,11 @@
     return { ok: true };
   }
 
+  function setPlayerChipMode(state, mode) {
+    state.playerChipMode = normalizePlayerChipMode(mode);
+    return { ok: true };
+  }
+
   function commitSnapshot(state, options = {}) {
     accrueTime(state, options);
     ensureAssignmentKeys(state);
@@ -741,6 +752,26 @@
   function playerName(state, playerId) {
     const player = getPlayer(state, playerId);
     return player ? player.name : "Open";
+  }
+
+  function playerShortName(name) {
+    const parts = String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (parts.length === 0) return "--";
+    const shortName = parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`;
+    return `${shortName[0] || ""}`.toUpperCase() + `${shortName[1] || ""}`.toLowerCase();
+  }
+
+  function playerChipText(player, mode = "names") {
+    if (normalizePlayerChipMode(mode) === "numbers") {
+      const number = String(player?.number || "").trim();
+      if (number) return number;
+    }
+
+    return playerShortName(player?.name);
   }
 
   function getVisibleAssignmentPlayerIds(state, assignments) {
@@ -893,6 +924,7 @@
     normalizeClock,
     defaultRosterSortDirection,
     normalizeRosterSortDirection,
+    normalizePlayerChipMode,
     normalizePlayer,
     uid,
     getPlayer,
@@ -918,6 +950,7 @@
     keepSlot,
     keepSwap,
     setRosterSort,
+    setPlayerChipMode,
     commitSnapshot,
     closeLiveStints,
     openLiveStints,
@@ -926,6 +959,8 @@
     addEvent,
     summarizeChanges,
     playerName,
+    playerShortName,
+    playerChipText,
     getVisibleAssignmentPlayerIds,
     getLivePlayerIds,
     isPlayerPlaytimeIncreasing,

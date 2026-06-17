@@ -195,6 +195,12 @@ function setRosterSort(sortKey) {
   render();
 }
 
+function setPlayerChipMode(mode) {
+  lineupCore.setPlayerChipMode(state, mode);
+  saveState();
+  render();
+}
+
 function commitSnapshot({ persist = true } = {}) {
   const result = lineupCore.commitSnapshot(state);
   if (!result.ok) return;
@@ -257,20 +263,8 @@ function renderTimeCode(seconds) {
   return `<span class="time-code">${escapeHtml(formatDuration(seconds))}</span>`;
 }
 
-function initials(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length === 0) return "--";
-  const shortName = parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`;
-  return `${shortName[0] || ""}`.toUpperCase() + `${shortName[1] || ""}`.toLowerCase();
-}
-
-function rosterBadgeText(player) {
-  const number = String(player.number || "").trim();
-  return number || initials(player.name);
+function playerChipText(player) {
+  return lineupCore.playerChipText(player, state.playerChipMode);
 }
 
 function escapeHtml(value) {
@@ -399,6 +393,7 @@ function renderRoster() {
       <div class="roster-table-wrap">
         ${state.players.length ? renderRosterTable() : `<div class="empty-state empty-padded">No players yet.</div>`}
       </div>
+      ${state.players.length ? renderPlayerChipSettings() : ""}
     </section>
   `;
 }
@@ -451,7 +446,7 @@ function renderRosterRow(player) {
     <tr data-player-row="${player.id}">
       <td>
         <div class="player-name-cell">
-          <span class="mini-bubble roster-badge">${escapeHtml(rosterBadgeText(player))}</span>
+          <span class="mini-bubble roster-badge">${escapeHtml(playerChipText(player))}</span>
           <div>
             <a class="player-name-link" href="#player-${player.id}" data-action="open-player-details" data-player-id="${player.id}">${escapeHtml(player.name)}</a>
           </div>
@@ -478,6 +473,29 @@ function renderRosterRow(player) {
         </div>
       </td>
     </tr>
+  `;
+}
+
+function renderPlayerChipSettings() {
+  const usingNumbers = state.playerChipMode === "numbers";
+
+  return `
+    <section class="roster-settings" aria-label="Roster display settings">
+      <span class="setting-title">Player chips</span>
+      <div class="chip-mode-control" role="group" aria-label="Player chip labels">
+        <span class="chip-mode-choice ${usingNumbers ? "" : "active"}">Names</span>
+        <label class="switch">
+          <input
+            type="checkbox"
+            data-action="toggle-player-chip-mode"
+            ${usingNumbers ? "checked" : ""}
+            aria-label="Use numbers for player chips"
+          >
+          <span aria-hidden="true"></span>
+        </label>
+        <span class="chip-mode-choice ${usingNumbers ? "active" : ""}">Numbers</span>
+      </div>
+    </section>
   `;
 }
 
@@ -534,11 +552,8 @@ function renderPlayerModal() {
       <section class="player-modal" role="dialog" aria-modal="true" aria-labelledby="player-modal-title">
         <div class="modal-head">
           <div class="player-modal-title">
-            <span class="mini-bubble">${escapeHtml(initials(player.name))}</span>
-            <div>
-              <h2 id="player-modal-title">${escapeHtml(player.name)}</h2>
-              ${player.number ? `<span>#${escapeHtml(player.number)}</span>` : ""}
-            </div>
+            <span class="mini-bubble">${escapeHtml(playerChipText(player))}</span>
+            <h2 id="player-modal-title">${escapeHtml(player.name)}</h2>
           </div>
           <button class="modal-close" data-action="close-player-details" aria-label="Close player details">
             ${renderIcon("cancel")}
@@ -1110,22 +1125,22 @@ function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
 function renderSlotBubble(slot, current, staged, movedFieldPlayerIds = new Set()) {
   if (current && staged && current.id !== staged.id) {
     const outgoingClass = movedFieldPlayerIds.has(current.id) ? "" : " outgoing";
-    return `<span class="player-bubble${outgoingClass}" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
+    return `<span class="player-bubble${outgoingClass}" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(playerChipText(current))}</span>`;
   }
 
   if (current && !staged) {
-    return `<span class="player-bubble outgoing" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
+    return `<span class="player-bubble outgoing" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(playerChipText(current))}</span>`;
   }
 
-  if (staged) return `<span class="player-bubble next" data-incoming-player-bubble="${escapeHtml(staged.id)}">${escapeHtml(initials(staged.name))}</span>`;
-  if (current) return `<span class="player-bubble" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
+  if (staged) return `<span class="player-bubble next" data-incoming-player-bubble="${escapeHtml(staged.id)}">${escapeHtml(playerChipText(staged))}</span>`;
+  if (current) return `<span class="player-bubble" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(playerChipText(current))}</span>`;
   return `<span class="player-bubble empty">+</span>`;
 }
 
 function renderIncomingPlayerBubble(player) {
   return `
     <span class="slot-incoming-bubble">
-      <span class="player-bubble incoming" data-incoming-player-bubble="${escapeHtml(player.id)}">${escapeHtml(initials(player.name))}</span>
+      <span class="player-bubble incoming" data-incoming-player-bubble="${escapeHtml(player.id)}">${escapeHtml(playerChipText(player))}</span>
     </span>
   `;
 }
@@ -1175,7 +1190,7 @@ function renderPlayerChip(player, inactive = false) {
       ${inactive ? "" : `data-action="select-player" data-player-id="${player.id}" data-player-chip="${player.id}"`}
       type="button"
     >
-        <span class="mini-bubble">${escapeHtml(initials(player.name))}</span>
+        <span class="mini-bubble">${escapeHtml(playerChipText(player))}</span>
         <span class="chip-text">
           <strong>${escapeHtml(player.name)}</strong>
           <span>${inactive ? "Inactive" : renderTimeCode(player.totalSeconds)}</span>
@@ -1585,6 +1600,10 @@ document.addEventListener("change", (event) => {
   if (target.dataset.action === "toggle-goalie") {
     const form = target.closest('form[data-form="formation"]');
     if (form instanceof HTMLFormElement) applyFormationForm(form);
+  }
+
+  if (target.dataset.action === "toggle-player-chip-mode") {
+    setPlayerChipMode(target.checked ? "numbers" : "names");
   }
 
   if (target.dataset.action === "stage-select") {

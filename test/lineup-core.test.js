@@ -81,6 +81,25 @@ test("normalizes soccer formation notation and rejects invalid formations", () =
   assert.match(core.normalizeFormation("2-x-1").error, /Use soccer notation/);
 });
 
+test("formats player chip labels from saved chip mode", () => {
+  const state = core.createState();
+  const player = { name: "Quentin Jules", number: "42" };
+  const unnumberedPlayer = { name: "Alex", number: "" };
+
+  assert.equal(state.playerChipMode, "names");
+  assert.equal(core.playerChipText(player, state.playerChipMode), "Qj");
+  assert.equal(core.playerChipText(player, "numbers"), "42");
+  assert.equal(core.playerChipText(unnumberedPlayer, "numbers"), "Al");
+
+  assert.equal(core.setPlayerChipMode(state, "numbers").ok, true);
+  assert.equal(state.playerChipMode, "numbers");
+  assert.equal(core.setPlayerChipMode(state, "invalid").ok, true);
+  assert.equal(state.playerChipMode, "names");
+
+  assert.equal(core.normalizeSavedState({ playerChipMode: "numbers" }).playerChipMode, "numbers");
+  assert.equal(core.normalizeSavedState({ playerChipMode: "bad" }).playerChipMode, "names");
+});
+
 test("moves and removes staged-only players before the first lineup is set", () => {
   const harness = createHarness();
   const { state, options } = harness;
