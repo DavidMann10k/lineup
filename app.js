@@ -1078,8 +1078,9 @@ function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
   const isChanged = (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
   const title = `${slot.label} ${slot.role}`;
   const incomingBubble = current && staged && current.id !== staged.id ? renderIncomingPlayerBubble(staged) : "";
-  const dragAttributes = current
-    ? `data-player-chip="${current.id}" data-drag-kind="field" data-source-slot-id="${slot.id}"`
+  const dragPlayer = current || staged;
+  const dragAttributes = dragPlayer
+    ? `data-player-chip="${dragPlayer.id}" data-drag-kind="field" data-source-slot-id="${slot.id}"`
     : "";
 
   return `

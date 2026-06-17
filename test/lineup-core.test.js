@@ -81,6 +81,36 @@ test("normalizes soccer formation notation and rejects invalid formations", () =
   assert.match(core.normalizeFormation("2-x-1").error, /Use soccer notation/);
 });
 
+test("moves and removes staged-only players before the first lineup is set", () => {
+  const harness = createHarness();
+  const { state, options } = harness;
+  const players = addPlayers(state, ["Alex", "Blair"], options);
+
+  assert.equal(core.applyFormation(state, "G-2-3-1", options).ok, true);
+  const slots = core.getSlots(state);
+  const sourceSlot = slots[1];
+  const targetSlot = slots[2];
+  const swapSlot = slots[3];
+
+  assert.equal(core.stagePlayerInSlot(state, players[0].id, sourceSlot.id, options).ok, true);
+  assert.equal(state.stagedAssignments[sourceSlot.id], players[0].id);
+  assert.equal(state.liveAssignments[sourceSlot.id] || null, null);
+
+  assert.equal(core.stageFieldPlayerInSlot(state, players[0].id, sourceSlot.id, targetSlot.id, options).ok, true);
+  assert.equal(state.stagedAssignments[sourceSlot.id], null);
+  assert.equal(state.stagedAssignments[targetSlot.id], players[0].id);
+
+  assert.equal(core.stagePlayerInSlot(state, players[1].id, swapSlot.id, options).ok, true);
+  assert.equal(core.stageFieldPlayerInSlot(state, players[0].id, targetSlot.id, swapSlot.id, options).ok, true);
+  assert.equal(state.stagedAssignments[targetSlot.id], players[1].id);
+  assert.equal(state.stagedAssignments[swapSlot.id], players[0].id);
+
+  assert.equal(core.stageSlotToBench(state, swapSlot.id, players[0].id, options).ok, true);
+  assert.equal(state.stagedAssignments[swapSlot.id], null);
+  assert.equal(core.getStagedPlayerIds(state).has(players[0].id), false);
+  assert.equal(core.getStagedPlayerIds(state).has(players[1].id), true);
+});
+
 test("keeps a bench substitution when its outgoing field player is dragged to another slot", () => {
   const harness = createHarness();
   const { state, options } = harness;
