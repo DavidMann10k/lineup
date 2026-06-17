@@ -225,8 +225,13 @@ function positionClass(code) {
   return `pos-${positionType(code)}`;
 }
 
-function renderPositionCode(code) {
-  return `<span class="position-code ${positionClass(code)}">${escapeHtml(code)}</span>`;
+function renderPositionCode(code, extraClasses = "") {
+  const className = `position-code ${positionClass(code)}${extraClasses ? ` ${extraClasses}` : ""}`;
+  return `<span class="${className}">${escapeHtml(code)}</span>`;
+}
+
+function renderPositionTag(code) {
+  return renderPositionCode(code, "position-tag");
 }
 
 function renderTimeCode(seconds) {
@@ -240,8 +245,8 @@ function initials(name) {
     .filter(Boolean);
 
   if (parts.length === 0) return "--";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  const shortName = parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`;
+  return `${shortName[0] || ""}`.toUpperCase() + `${shortName[1] || ""}`.toLowerCase();
 }
 
 function rosterBadgeText(player) {
@@ -332,8 +337,6 @@ function renderIcon(name) {
       '<path d="M18.8 8.2A7.2 7.2 0 1 0 19 15" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round"></path><path d="M19 4.8v4.1h-4.1" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"></path>',
     swapVertical:
       '<path d="M8 4v14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M4.5 14.5 8 18l3.5-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path><path d="M16 20V6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path><path d="M12.5 9.5 16 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>',
-    chair:
-      '<path d="M8 10h8a2 2 0 0 1 2 2v3H6v-3a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"></path><path d="M8 10V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"></path><path d="M7 15v5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path><path d="M17 15v5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"></path>',
     cancel:
       '<path d="m7 7 10 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path><path d="m17 7-10 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path>',
     check:
@@ -492,7 +495,7 @@ function renderUsageReadout(player) {
     .map(
       (entry) => `
         <span class="usage-row">
-          ${renderPositionCode(entry.code)}
+          ${renderPositionTag(entry.code)}
           ${renderTimeCode(entry.seconds)}
         </span>
       `,
@@ -608,10 +611,10 @@ function renderSubRow(sub) {
   const isSwap = Boolean(sub.pairedSlot);
   return `
     <div class="sub-row">
-      <div class="sub-flow in">
+      <div class="sub-flow">
         <strong class="sub-name ${sub.incoming ? "" : "empty"}">${sub.incoming ? escapeHtml(sub.incoming.name) : "Open"}</strong>
         <span class="sub-arrow" aria-hidden="true">&rarr;</span>
-        <span class="sub-position ${positionClass(sub.slot.label)}" aria-hidden="true">${escapeHtml(sub.slot.label)}</span>
+        ${renderPositionTag(sub.slot.label)}
       </div>
       <button
         class="sub-cancel"
@@ -628,8 +631,8 @@ function renderSubRow(sub) {
         <span class="sub-arrow" aria-hidden="true">&rarr;</span>
         ${
           sub.outgoingDestination
-            ? `<span class="sub-position ${positionClass(sub.outgoingDestination.label)}" aria-hidden="true">${escapeHtml(sub.outgoingDestination.label)}</span>`
-            : `<span class="sub-chair" aria-hidden="true">${renderIcon("chair")}</span>`
+            ? renderPositionTag(sub.outgoingDestination.label)
+            : renderPositionTag("BE")
         }
       </div>
     </div>
