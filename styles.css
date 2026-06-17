@@ -518,6 +518,7 @@ button:focus-visible {
 
 .pitch {
   position: relative;
+  isolation: isolate;
   width: min(560px, 38vw, 100%);
   margin: 0 auto;
   overflow: hidden;
@@ -613,6 +614,7 @@ button:focus-visible {
 
 .pitch::after {
   position: absolute;
+  z-index: 0;
   inset: 10px;
   border: 2px solid var(--field-line);
   content: "";
@@ -621,7 +623,7 @@ button:focus-visible {
 
 .pitch-line {
   position: absolute;
-  z-index: 1;
+  z-index: 0;
   pointer-events: none;
 }
 
@@ -694,33 +696,44 @@ button:focus-visible {
   pointer-events: none;
 }
 
-.pitch-arrows marker path {
+.pitch-arrow-head-blue {
   fill: var(--blue);
 }
 
-.pitch-move-arrow {
+.pitch-arrow-head-red {
+  fill: var(--red);
+}
+
+.pitch-arrow {
   fill: none;
-  marker-end: url("#move-arrow-head");
   stroke: var(--blue);
   stroke-linecap: round;
   stroke-width: 2.6;
   vector-effect: non-scaling-stroke;
 }
 
+.pitch-arrow.bench-exit {
+  stroke: var(--red);
+}
+
 .field-slot-shell {
   --slot-box-width: clamp(56px, 10vw, 82px);
+  --slot-box-height: 70px;
+  --slot-y-bias: -16px;
   position: absolute;
-  z-index: 4;
   display: grid;
   width: var(--slot-box-width);
-  height: 70px;
+  height: var(--slot-box-height);
+  margin-top: calc((var(--slot-box-height) / -2) + var(--slot-y-bias));
+  margin-left: calc(var(--slot-box-width) / -2);
   overflow: visible;
   place-items: center;
-  transform: translate(-50%, -50%);
   user-select: none;
 }
 
 .field-slot {
+  position: relative;
+  z-index: 2;
   display: grid;
   width: 100%;
   height: 100%;
@@ -777,6 +790,7 @@ button:focus-visible {
 
 .slot-name {
   position: absolute;
+  z-index: 2;
   top: calc(100% + 2px);
   left: 50%;
   width: max-content;
@@ -802,12 +816,13 @@ button:focus-visible {
   color: #fff;
   font-weight: 900;
   letter-spacing: 0;
+  line-height: 1;
 }
 
 .player-bubble {
   width: 38px;
   height: 38px;
-  font-size: 0.78rem;
+  font-size: 1rem;
 }
 
 .player-bubble.empty {
@@ -817,54 +832,29 @@ button:focus-visible {
   font-size: 1rem;
 }
 
-.substitution-bubble-layer {
+.slot-incoming-bubble {
   position: absolute;
   z-index: 6;
-  inset: 0;
-  pointer-events: none;
-}
-
-.staged-player-overlay {
-  position: absolute;
-  top: -9999px;
-  left: -9999px;
+  top: 50%;
+  left: calc(50% + 40px);
   display: grid;
   place-items: center;
+  pointer-events: none;
   transform: translate(-50%, -50%);
 }
 
-.staged-player-overlay .player-bubble {
-  width: 34px;
-  height: 34px;
-  font-size: 0.7rem;
-}
-
-.player-bubble.next,
-.staged-player-overlay .player-bubble.incoming {
+.player-bubble.next {
   background: var(--slot-color, var(--blue));
 }
 
-.bubble-sub-arrow {
-  position: absolute;
-  top: 50%;
-  right: calc(100% - 3px);
-  display: grid;
-  width: 13px;
-  color: var(--blue);
-  font-size: 1rem;
-  font-weight: 900;
-  line-height: 1;
-  place-items: center;
-  transform: translateY(-50%);
-}
-
-.staged-player-overlay .player-bubble.incoming {
+.slot-incoming-bubble .player-bubble.incoming {
+  background: var(--blue);
   border-color: var(--blue);
 }
 
 .field-slot.changed .player-bubble.outgoing {
   border-color: var(--red);
-  box-shadow: 0 0 0 2px rgba(207, 73, 63, 0.72);
+  box-shadow: 0 0 0 2px var(--red);
 }
 
 .bench-strip {
@@ -1757,7 +1747,7 @@ tr:last-child td {
   }
 
   .field-slot-shell {
-    height: 58px;
+    --slot-box-height: 58px;
   }
 
   .slot-name {

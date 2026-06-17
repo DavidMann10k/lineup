@@ -15,7 +15,6 @@ let activeChipDrag = null;
 let activePageSwipe = null;
 let pendingViewTransition = null;
 let suppressNextChipClick = false;
-const INCOMING_BUBBLE_OFFSET = 32;
 
 function createState() {
   return lineupCore.createState();
@@ -301,7 +300,7 @@ function render() {
   wireDragAndDrop();
   wirePageSwipe();
   updateDynamicDom();
-  updateSubstitutionLayer();
+  refreshPitchArrows();
   restorePendingFocus();
 }
 
@@ -716,9 +715,8 @@ function renderPitch() {
       <div class="pitch-line penalty bottom"></div>
       <div class="pitch-line goal top"></div>
       <div class="pitch-line goal bottom"></div>
-      ${renderPendingMoveArrows()}
+      ${renderPitchArrowLayer(slots)}
       ${slots.map((slot) => renderFieldSlot(slot, movedFieldPlayerIds)).join("")}
-      ${renderStagedPlayerOverlays(slots)}
     </div>
   `;
 }
@@ -738,15 +736,23 @@ function getMovedFieldPlayerIds(slots = getSlots()) {
   return movedPlayerIds;
 }
 
-function renderPendingMoveArrows() {
-  const arrows = getPendingMoveArrows();
-  if (!arrows.length) return "";
+function renderPitchArrowLayer(slots = getSlots()) {
+  if (
+    !getPendingMoveArrows(slots).length &&
+    !hasPendingIncomingBubbles(slots) &&
+    !getPendingBenchExitSlots(slots).length
+  ) {
+    return "";
+  }
 
   return `
     <svg class="pitch-arrows" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <defs>
         <marker id="move-arrow-head" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z"></path>
+          <path class="pitch-arrow-head-blue" d="M 0 0 L 10 5 L 0 10 z"></path>
+        </marker>
+        <marker id="bench-arrow-head" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path class="pitch-arrow-head-red" d="M 0 0 L 10 5 L 0 10 z"></path>
         </marker>
       </defs>
       <g data-pitch-arrows></g>
@@ -754,8 +760,7 @@ function renderPendingMoveArrows() {
   `;
 }
 
-function getPendingMoveArrows() {
-  const slots = getSlots();
+function getPendingMoveArrows(slots = getSlots()) {
   const stagedSlotByPlayerId = new Map();
   const arrows = [];
 
@@ -784,14 +789,56 @@ function getPendingMoveArrows() {
   return arrows;
 }
 
+function getPendingBenchExitSlots(slots = getSlots()) {
+  const movedFieldPlayerIds = getMovedFieldPlayerIds(slots);
+
+  return slots.filter((slot) => {
+    const livePlayerId = state.liveAssignments[slot.id] || null;
+    const stagedPlayerId = state.stagedAssignments[slot.id] || null;
+    return livePlayerId && livePlayerId !== stagedPlayerId && !movedFieldPlayerIds.has(livePlayerId);
+  });
+}
+
+function hasPendingIncomingBubbles(slots = getSlots()) {
+  return slots.some((slot) => {
+    const livePlayerId = state.liveAssignments[slot.id] || null;
+    const stagedPlayerId = state.stagedAssignments[slot.id] || null;
+    return livePlayerId && stagedPlayerId && livePlayerId !== stagedPlayerId;
+  });
+}
+
 function renderPendingMoveArrow(from, to, bendSide = null) {
   const path = curveArrowPath(from, to, bendSide);
 
   return `
     <path
-      class="pitch-move-arrow"
+      class="pitch-arrow"
       d="${path}"
       marker-end="url(#move-arrow-head)"
+    ></path>
+  `;
+}
+
+function renderIncomingSubArrow(from, to) {
+  const path = straightArrowPath(from, to, 9, 8);
+
+  return `
+    <path
+      class="pitch-arrow"
+      d="${path}"
+      marker-end="url(#move-arrow-head)"
+    ></path>
+  `;
+}
+
+function renderBenchExitArrow(from) {
+  const path = straightArrowPath(from, { x: from.x, y: from.y + 45 }, 23, 0);
+
+  return `
+    <path
+      class="pitch-arrow bench-exit"
+      d="${path}"
+      marker-end="url(#bench-arrow-head)"
     ></path>
   `;
 }
@@ -812,21 +859,38 @@ function curveArrowPath(from, to, bendSide = null) {
   ].join(" ");
 }
 
-function trimArrowEndpoints(from, to) {
+function straightArrowPath(from, to, startTrim = 0, endTrim = 0) {
+  const endpoints = trimArrowEndpoints(from, to, startTrim, endTrim);
+
+  return [
+    "M",
+    formatArrowCoord(endpoints.x1),
+    formatArrowCoord(endpoints.y1),
+    "L",
+    formatArrowCoord(endpoints.x2),
+    formatArrowCoord(endpoints.y2),
+  ].join(" ");
+}
+
+function trimArrowEndpoints(from, to, startTrim = 18, endTrim = startTrim) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy);
   if (!length) return { x1: from.x, y1: from.y, x2: to.x, y2: to.y };
 
-  const trim = 18;
-  const trimX = (dx / length) * trim;
-  const trimY = (dy / length) * trim;
+  const maxTrim = length * 0.45;
+  const fromTrim = Math.min(startTrim, maxTrim);
+  const toTrim = Math.min(endTrim, maxTrim);
+  const fromTrimX = (dx / length) * fromTrim;
+  const fromTrimY = (dy / length) * fromTrim;
+  const toTrimX = (dx / length) * toTrim;
+  const toTrimY = (dy / length) * toTrim;
 
   return {
-    x1: from.x + trimX,
-    y1: from.y + trimY,
-    x2: to.x - trimX,
-    y2: to.y - trimY,
+    x1: from.x + fromTrimX,
+    y1: from.y + fromTrimY,
+    x2: to.x - toTrimX,
+    y2: to.y - toTrimY,
   };
 }
 
@@ -870,28 +934,14 @@ function formatArrowCoord(value) {
   return Number(value).toFixed(2);
 }
 
-function updateSubstitutionLayer() {
+function refreshPitchArrows() {
   const pitch = document.querySelector(".pitch");
   if (!pitch) return;
 
-  positionStagedPlayerOverlays(pitch);
-  updatePitchMoveArrows(pitch);
+  updatePitchArrows(pitch);
 }
 
-function positionStagedPlayerOverlays(pitch) {
-  const pitchRect = pitch.getBoundingClientRect();
-
-  pitch.querySelectorAll(".staged-player-overlay[data-slot-id]").forEach((overlay) => {
-    const anchor = pitch.querySelector(dataSelector("data-slot-bubble-anchor", overlay.dataset.slotId));
-    if (!anchor) return;
-
-    const center = elementCenter(anchor, pitchRect);
-    overlay.style.left = `${formatArrowCoord(center.x + INCOMING_BUBBLE_OFFSET)}px`;
-    overlay.style.top = `${formatArrowCoord(center.y)}px`;
-  });
-}
-
-function updatePitchMoveArrows(pitch) {
+function updatePitchArrows(pitch) {
   const svg = pitch.querySelector(".pitch-arrows");
   const arrowLayer = pitch.querySelector("[data-pitch-arrows]");
   if (!svg || !arrowLayer) return;
@@ -913,9 +963,30 @@ function updatePitchMoveArrows(pitch) {
     })
     .filter(Boolean);
 
-  arrowLayer.innerHTML = pairMoveArrowBends(measuredArrows)
+  const moveArrows = pairMoveArrowBends(measuredArrows)
     .map((arrow) => renderPendingMoveArrow(arrow.from, arrow.to, arrow.bendSide))
     .join("");
+
+  const incomingSubArrows = Array.from(pitch.querySelectorAll(".slot-incoming-bubble"))
+    .map((incomingBubble) => {
+      const current = incomingBubble.closest(".field-slot-shell")?.querySelector("[data-slot-bubble-anchor]");
+      const incoming = incomingBubble.querySelector("[data-incoming-player-bubble]");
+      if (!current || !incoming) return null;
+
+      return {
+        from: elementCenter(incoming, pitchRect),
+        to: elementCenter(current, pitchRect),
+      };
+    })
+    .filter(Boolean)
+    .map((arrow) => renderIncomingSubArrow(arrow.from, arrow.to))
+    .join("");
+
+  const benchExitArrows = Array.from(pitch.querySelectorAll(".player-bubble.outgoing[data-current-player-bubble]"))
+    .map((bubble) => renderBenchExitArrow(elementCenter(bubble, pitchRect)))
+    .join("");
+
+  arrowLayer.innerHTML = `${moveArrows}${incomingSubArrows}${benchExitArrows}`;
 }
 
 function pairMoveArrowBends(arrows) {
@@ -971,34 +1042,6 @@ function elementCenter(element, containerRect) {
   };
 }
 
-function renderStagedPlayerOverlays(slots = getSlots()) {
-  const overlays = slots
-    .map((slot) => {
-      const livePlayerId = state.liveAssignments[slot.id] || null;
-      const stagedPlayerId = state.stagedAssignments[slot.id] || null;
-      const stagedPlayer = livePlayerId && stagedPlayerId !== livePlayerId ? getPlayer(stagedPlayerId) : null;
-      return stagedPlayer ? renderStagedPlayerOverlay(slot, stagedPlayer) : "";
-    })
-    .filter(Boolean)
-    .join("");
-
-  if (!overlays) return "";
-
-  return `<div class="substitution-bubble-layer" aria-hidden="true">${overlays}</div>`;
-}
-
-function renderStagedPlayerOverlay(slot, player) {
-  return `
-    <span
-      class="staged-player-overlay"
-      data-slot-id="${escapeHtml(slot.id)}"
-    >
-      <span class="bubble-sub-arrow">&larr;</span>
-      <span class="player-bubble incoming" data-incoming-player-bubble="${escapeHtml(player.id)}">${escapeHtml(initials(player.name))}</span>
-    </span>
-  `;
-}
-
 function renderFieldClock() {
   const startingLineupSet = hasCompleteLiveLineup();
   const startDisabled = !state.clock.running && !startingLineupSet;
@@ -1034,6 +1077,7 @@ function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
   const staged = getPlayer(state.stagedAssignments[slot.id]);
   const isChanged = (state.liveAssignments[slot.id] || null) !== (state.stagedAssignments[slot.id] || null);
   const title = `${slot.label} ${slot.role}`;
+  const incomingBubble = current && staged && current.id !== staged.id ? renderIncomingPlayerBubble(staged) : "";
   const dragAttributes = current
     ? `data-player-chip="${current.id}" data-drag-kind="field" data-source-slot-id="${slot.id}"`
     : "";
@@ -1056,6 +1100,7 @@ function renderFieldSlot(slot, movedFieldPlayerIds = getMovedFieldPlayerIds()) {
         <span class="position-label">${renderPositionCode(slot.label)}</span>
         ${renderSlotBubble(slot, current, staged, movedFieldPlayerIds)}
       </button>
+      ${incomingBubble}
       <span class="slot-name" aria-hidden="true">${escapeHtml(slotName(current, staged))}</span>
     </div>
   `;
@@ -1074,6 +1119,14 @@ function renderSlotBubble(slot, current, staged, movedFieldPlayerIds = new Set()
   if (staged) return `<span class="player-bubble next" data-incoming-player-bubble="${escapeHtml(staged.id)}">${escapeHtml(initials(staged.name))}</span>`;
   if (current) return `<span class="player-bubble" data-current-player-bubble="${escapeHtml(current.id)}" data-slot-bubble-anchor="${escapeHtml(slot.id)}">${escapeHtml(initials(current.name))}</span>`;
   return `<span class="player-bubble empty">+</span>`;
+}
+
+function renderIncomingPlayerBubble(player) {
+  return `
+    <span class="slot-incoming-bubble">
+      <span class="player-bubble incoming" data-incoming-player-bubble="${escapeHtml(player.id)}">${escapeHtml(initials(player.name))}</span>
+    </span>
+  `;
 }
 
 function slotName(current, staged) {
@@ -1577,22 +1630,22 @@ document.addEventListener("visibilitychange", () => {
   } else {
     resumeRunningClock();
     updateDynamicDom();
-    updateSubstitutionLayer();
+    refreshPitchArrows();
   }
 });
 document.addEventListener("freeze", persistRunningClock);
 document.addEventListener("resume", () => {
   resumeRunningClock();
   updateDynamicDom();
-  updateSubstitutionLayer();
+  refreshPitchArrows();
 });
 window.addEventListener("pageshow", () => {
   resumeRunningClock();
   updateDynamicDom();
-  updateSubstitutionLayer();
+  refreshPitchArrows();
 });
 window.addEventListener("pagehide", persistRunningClock);
-window.addEventListener("resize", updateSubstitutionLayer);
+window.addEventListener("resize", refreshPitchArrows);
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {
