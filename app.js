@@ -7,6 +7,7 @@ if (!matchLogExport) throw new Error("MatchLogExport failed to load.");
 
 const STORAGE_KEY = lineupCore.STORAGE_KEY;
 const app = document.getElementById("app");
+const DROP_TARGET_SELECTOR = "[data-slot-drop], [data-bench-drop]";
 
 let state = loadState();
 let pendingFocusSelector = null;
@@ -1393,6 +1394,7 @@ function startChipPointerDrag(event) {
     sourceSlotId: chip.dataset.sourceSlotId || null,
     source: chip,
     pointerId: event.pointerId,
+    pointerType: event.pointerType || "mouse",
     startX: event.clientX,
     startY: event.clientY,
     currentDrop: null,
@@ -1473,20 +1475,63 @@ function createDragGhost(source) {
 
 function moveDragGhost(x, y) {
   if (!activeChipDrag?.ghost) return;
-  activeChipDrag.ghost.style.transform = `translate(${Math.round(x + 10)}px, ${Math.round(y + 10)}px)`;
+  const offset = dragGhostOffset();
+  activeChipDrag.ghost.style.transform = `translate(${Math.round(x + offset.x)}px, ${Math.round(y + offset.y)}px)`;
+}
+
+function dragGhostOffset() {
+  return activeChipDrag?.pointerType === "touch" ? { x: 24, y: -52 } : { x: 10, y: 10 };
 }
 
 function updatePointerDropTarget(x, y) {
   const previous = activeChipDrag.currentDrop;
-  activeChipDrag.ghost.hidden = true;
-  const element = document.elementFromPoint(x, y);
-  activeChipDrag.ghost.hidden = false;
-  const next = element?.closest?.("[data-slot-drop], [data-bench-drop]") || null;
+  const next = findDropTarget(x, y);
 
   if (previous === next) return;
   previous?.classList.remove("drag-over");
   next?.classList.add("drag-over");
   activeChipDrag.currentDrop = next;
+}
+
+function findDropTarget(x, y) {
+  if (activeChipDrag?.pointerType !== "touch" || !activeChipDrag.ghost) {
+    return findPointDropTarget(x, y);
+  }
+
+  return findIntersectingDropTarget(activeChipDrag.ghost.getBoundingClientRect()) || findPointDropTarget(x, y);
+}
+
+function findPointDropTarget(x, y) {
+  const ghost = activeChipDrag?.ghost;
+  if (ghost) ghost.hidden = true;
+  const target = document.elementFromPoint(x, y)?.closest?.(DROP_TARGET_SELECTOR) || null;
+  if (ghost) ghost.hidden = false;
+  return target;
+}
+
+function findIntersectingDropTarget(sourceRect) {
+  const sourceCenter = rectCenter(sourceRect);
+
+  return Array.from(document.querySelectorAll(DROP_TARGET_SELECTOR))
+    .map((target) => ({ target, rect: target.getBoundingClientRect() }))
+    .filter(({ rect }) => rectIntersects(sourceRect, rect))
+    .map(({ target, rect }) => ({ target, distance: centerDistance(sourceCenter, rectCenter(rect)) }))
+    .sort((a, b) => a.distance - b.distance)[0]?.target || null;
+}
+
+function rectIntersects(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function rectCenter(rect) {
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+}
+
+function centerDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function cleanupChipPointerDrag(pointerId) {
